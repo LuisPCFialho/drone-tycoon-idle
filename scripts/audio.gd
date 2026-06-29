@@ -9,6 +9,7 @@ var _players: Array[AudioStreamPlayer] = []
 var _next := 0
 var _last_tick := 0
 var _last_sell := 0
+var _ambient: AudioStreamPlayer
 
 func _ready() -> void:
 	_streams["tick"] = _tone(180.0, 0.04, "noise", 0.18, 2.0)
@@ -18,13 +19,26 @@ func _ready() -> void:
 	_streams["sell"] = _two(660.0, 990.0, 0.14, 0.28)
 	_streams["achieve"] = _two(784.0, 1175.0, 0.22, 0.30)
 	_streams["prestige"] = _tone(523.0, 0.45, "sine", 0.30, 1.2)
+	_streams["milestone"] = _arp([523.0, 659.0, 784.0, 1047.0], 0.5, 0.26)
+	_streams["unlock"] = _two(587.0, 880.0, 0.26, 0.28)
 	for i in range(10):
 		var p := AudioStreamPlayer.new()
 		add_child(p)
 		_players.append(p)
+	_ambient = AudioStreamPlayer.new()
+	add_child(_ambient)
+	_ambient.stream = _pad(4.0)
+	_ambient.volume_db = -26.0
+	_ambient.play()
 	if has_node("/root/GameState"):
 		GameState.delivered.connect(_on_delivered)
 		GameState.prestiged.connect(func(_g): play("prestige"))
+		GameState.milestone_reached.connect(func(_m): play("milestone", 1.0, -3.0))
+		GameState.hub_unlocked.connect(func(_i): play("unlock", 1.0, -2.0))
+
+func _process(_delta: float) -> void:
+	if _ambient:
+		_ambient.stream_paused = muted
 
 func _on_delivered(_amount: float, _hub: int) -> void:
 	var now := Time.get_ticks_msec()
@@ -78,6 +92,35 @@ func _two(f1: float, f2: float, dur: float, vol: float) -> AudioStreamWAV:
 		var v := int(clampf(sin(TAU * freq * t) * env * vol, -1.0, 1.0) * 32767.0)
 		data.encode_s16(i * 2, v)
 	return _wav(data)
+
+func _arp(freqs: Array, dur: float, vol: float) -> AudioStreamWAV:
+	var n := int(dur * RATE)
+	var data := PackedByteArray(); data.resize(n * 2)
+	var seg := n / freqs.size()
+	for i in range(n):
+		var idx: int = min(i / max(1, seg), freqs.size() - 1)
+		var freq: float = freqs[idx]
+		var local := float(i - idx * seg) / float(max(1, seg))
+		var env: float = pow(1.0 - local, 1.2)
+		var v := int(clampf(sin(TAU * freq * float(i) / RATE) * env * vol, -1.0, 1.0) * 32767.0)
+		data.encode_s16(i * 2, v)
+	return _wav(data)
+
+func _pad(dur: float) -> AudioStreamWAV:
+	# Soft sustained chord for ambient background; loops seamlessly.
+	var n := int(dur * RATE)
+	var data := PackedByteArray(); data.resize(n * 2)
+	for i in range(n):
+		var t := float(i) / RATE
+		var trem := 0.85 + 0.15 * sin(TAU * 0.15 * t)
+		var s := (sin(TAU * 130.81 * t) + 0.6 * sin(TAU * 196.0 * t) + 0.4 * sin(TAU * 261.63 * t)) / 2.0
+		var v := int(clampf(s * 0.5 * trem, -1.0, 1.0) * 32767.0)
+		data.encode_s16(i * 2, v)
+	var st := _wav(data)
+	st.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	st.loop_begin = 0
+	st.loop_end = n - 1
+	return st
 
 func _wav(data: PackedByteArray) -> AudioStreamWAV:
 	var st := AudioStreamWAV.new()

@@ -11,6 +11,7 @@ func _ready() -> void:
 		GameState._process(dt)
 		if iter % 10 == 0:   # ~1 purchase decision per simulated second (realistic)
 			_auto_buy()
+			_maybe_prestige()
 		t += dt; iter += 1
 		if iter % 1200 == 0:
 			_report(t)
@@ -31,14 +32,22 @@ func _auto_buy() -> void:
 	for k in Economy.UPGRADE_ORDER:
 		var c := Economy.upgrade_cost(k, int(GameState.levels[k]))
 		if c < best_cost: best = k; best_cost = c
-	var hc := GameState.next_hub_cost()
-	if hc >= 0.0 and GameState.credits >= hc and hc <= best_cost * 6.0:
+	if GameState.can_unlock_hub():
 		GameState.unlock_hub(); return
 	if best != "" and GameState.credits >= best_cost:
 		if best == "drone": GameState.buy_drones()
 		else: GameState.buy_upgrade_multi(best)
 
+func _maybe_prestige() -> void:
+	# Prestige when the gain would at least double current influence_total (or first time).
+	var g := GameState.prestige_gain()
+	if g >= 2 and g >= GameState.influence_total:
+		GameState.do_prestige()
+		# spend influence on the global talent and unlock gated cities later
+		while GameState.can_buy_talent("global"):
+			GameState.buy_talent("global")
+
 func _report(t: float) -> void:
-	print("t=%4ds  drones=%3d  cidades=%d  credits=%9s  income/s=%9s  infl=%d" % [
+	print("t=%4ds  drones=%3d  cidades=%d  credits=%9s  income/s=%9s  infl=%d/%d" % [
 		int(t), GameState.drones, GameState.hubs_unlocked - 1, Fmt.short(GameState.credits),
-		Fmt.short(GameState.income_per_sec()), GameState.prestige_gain()])
+		Fmt.short(GameState.income_per_sec()), GameState.influence, GameState.influence_total])
