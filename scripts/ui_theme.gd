@@ -70,26 +70,26 @@ static func glass() -> StyleBoxFlat:
 ## Card with accent-tinted background and glowing border
 static func action_card(accent: Color) -> StyleBoxFlat:
 	var base := PANEL2.lerp(accent, 0.10)
-	var s := _panel(base, 22); s.set_content_margin_all(18)
+	var s := _panel(base, 18); s.set_content_margin_all(10)
 	s.border_color = lerp(BORDER, accent, 0.60); s.set_border_width_all(1)
-	s.shadow_color = Color(accent.r, accent.g, accent.b, 0.25)
-	s.shadow_size = 16; s.shadow_offset = Vector2(0, 5)
+	s.shadow_color = Color(accent.r, accent.g, accent.b, 0.22)
+	s.shadow_size = 10; s.shadow_offset = Vector2(0, 4)
 	return s
 
 ## Full-width action button (buy / unlock)
 static func action_btn(color: Color) -> StyleBoxFlat:
-	var s := StyleBoxFlat.new(); s.bg_color = color; s.set_corner_radius_all(18)
-	s.content_margin_left = 14; s.content_margin_right = 14
-	s.content_margin_top = 20; s.content_margin_bottom = 20
+	var s := StyleBoxFlat.new(); s.bg_color = color; s.set_corner_radius_all(14)
+	s.content_margin_left = 12; s.content_margin_right = 12
+	s.content_margin_top = 11; s.content_margin_bottom = 11
 	s.border_color = color.lightened(0.32); s.border_width_top = 2
-	s.shadow_color = Color(color.r, color.g, color.b, 0.48)
-	s.shadow_size = 12; s.shadow_offset = Vector2(0, 5)
+	s.shadow_color = Color(color.r, color.g, color.b, 0.42)
+	s.shadow_size = 8; s.shadow_offset = Vector2(0, 4)
 	return s
 
 static func action_btn_disabled() -> StyleBoxFlat:
-	var s := StyleBoxFlat.new(); s.bg_color = Color(0.14, 0.18, 0.30); s.set_corner_radius_all(18)
-	s.content_margin_left = 14; s.content_margin_right = 14
-	s.content_margin_top = 20; s.content_margin_bottom = 20
+	var s := StyleBoxFlat.new(); s.bg_color = Color(0.14, 0.18, 0.30); s.set_corner_radius_all(14)
+	s.content_margin_left = 12; s.content_margin_right = 12
+	s.content_margin_top = 11; s.content_margin_bottom = 11
 	return s
 
 ## Segmented control button (x1 / x10 / x100 / Max)
