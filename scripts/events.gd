@@ -1,0 +1,87 @@
+extends Node
+## Timed random events (autoload: Events). Bonuses that appear during play.
+
+signal started(id: String)
+signal ended(id: String)
+
+const DEFS := {
+    "rush":     {"name": "Hora de Ponta",     "desc": "Ganhos ×2 durante 5 min!",     "icon": "⚡", "dur": 300.0, "mult": 2.0,  "col": 0},
+    "golden":   {"name": "Encomenda Dourada", "desc": "Próxima entrega ×10!",          "icon": "⭐", "dur": 90.0,  "mult": 10.0, "col": 1, "one_shot": true},
+    "storm":    {"name": "Tempestade",         "desc": "Velocidade ÷2, Ganhos ×3!",   "icon": "⛈", "dur": 240.0, "mult": 3.0,  "col": 2, "spd": 0.5},
+    "festival": {"name": "Festival da Cidade","desc": "Ganhos ×2.5 por 8 min!",      "icon": "🎉", "dur": 480.0, "mult": 2.5,  "col": 3},
+    "vip_pkg":  {"name": "Pacote VIP",        "desc": "Próxima entrega ×25!",         "icon": "💼", "dur": 60.0,  "mult": 25.0, "col": 1, "one_shot": true},
+}
+
+const COLORS := [
+    Color(0.28, 0.52, 1.00),
+    Color(1.00, 0.78, 0.22),
+    Color(0.45, 0.65, 1.00),
+    Color(0.13, 0.82, 0.48),
+]
+
+const MIN_WAIT := 240.0
+const MAX_WAIT := 720.0
+
+var active := ""
+var timer := 0.0
+var next_wait := 0.0
+var total_participated := 0
+
+# Multipliers applied in GameState
+var current_mult := 1.0
+var current_spd_mult := 1.0
+var _one_shot_fired := false
+
+func _ready() -> void:
+    next_wait = randf_range(60.0, 180.0)  # first event 1-3 min
+
+func _process(delta: float) -> void:
+    if active != "":
+        timer -= delta
+        var def: Dictionary = DEFS[active]
+        if bool(def.get("one_shot", false)) and _one_shot_fired:
+            _end()
+        elif timer <= 0.0:
+            _end()
+    else:
+        next_wait -= delta
+        if next_wait <= 0.0:
+            _trigger()
+
+func _trigger() -> void:
+    var keys := DEFS.keys()
+    var id: String = keys[randi() % keys.size()]
+    active = id; _one_shot_fired = false
+    var def: Dictionary = DEFS[id]
+    timer = float(def.get("dur", 120.0))
+    current_mult = float(def.get("mult", 1.0))
+    current_spd_mult = float(def.get("spd", 1.0))
+    total_participated += 1
+    if has_node("/root/Achievements"): Achievements.note_event(total_participated)
+    if has_node("/root/Audio"): Audio.play("unlock")
+    started.emit(id)
+
+func _end() -> void:
+    var id := active
+    active = ""; current_mult = 1.0; current_spd_mult = 1.0
+    next_wait = randf_range(MIN_WAIT, MAX_WAIT)
+    ended.emit(id)
+
+func fire_one_shot() -> void:
+    _one_shot_fired = true
+
+func is_active() -> bool:
+    return active != ""
+
+func def() -> Dictionary:
+    return DEFS.get(active, {}) if active != "" else {}
+
+func time_pct() -> float:
+    if not is_active(): return 0.0
+    var d: Dictionary = DEFS.get(active, {})
+    return clampf(timer / maxf(float(d.get("dur", 1.0)), 0.001), 0.0, 1.0)
+
+func color() -> Color:
+    if not is_active(): return Color.WHITE
+    var ci: int = int(def().get("col", 0))
+    return COLORS[mini(ci, COLORS.size() - 1)]

@@ -4,6 +4,8 @@ extends Node
 
 const RATE := 22050
 var muted := false
+var music_vol := -20.0   # ambient pad volume in dB
+var sfx_vol := 0.0       # SFX offset in dB
 var _streams := {}
 var _players: Array[AudioStreamPlayer] = []
 var _next := 0
@@ -13,29 +15,40 @@ var _ambient: AudioStreamPlayer
 
 func _ready() -> void:
 	_build_streams()
-	for i in range(12):
+	for i in range(16):
 		var p := AudioStreamPlayer.new(); add_child(p); _players.append(p)
 	_ambient = AudioStreamPlayer.new(); add_child(_ambient)
 	_ambient.stream = _streams["pad"]
-	_ambient.volume_db = -20.0; _ambient.play()
+	_ambient.volume_db = music_vol; _ambient.play()
 	if has_node("/root/GameState"):
 		GameState.delivered.connect(_on_delivered)
 		GameState.country_changed.connect(func(_i): play("milestone", 1.0, -2.0))
 		GameState.city_unlocked.connect(func(_i): play("unlock", 1.0, -3.0))
+	if has_node("/root/Events"):
+		Events.started.connect(func(_id): play("event_start", 1.0, -2.0))
+	if has_node("/root/Daily"):
+		Daily.reward_claimed.connect(func(_idx): play("daily", 1.0, 0.0))
+	if has_node("/root/Prestige"):
+		Prestige.prestiged.connect(func(_n): play("prestige", 0.95, 2.0))
 
 func _build_streams() -> void:
-	_streams["tap"]       = _ping(880.0, 880.0, 0.022, 0.14)
-	_streams["tick"]      = _noise(0.026, 0.12, 2.0)
-	_streams["buy"]       = _ping(620.0, 1040.0, 0.090, 0.28)
-	_streams["sell"]      = _chime(1046.5, 0.120, 0.22)
-	_streams["unlock"]    = _arp3([523.25, 659.26, 783.99], 0.072, 0.25)
-	_streams["milestone"] = _arp3([523.25, 659.26, 783.99, 1046.5], 0.105, 0.27)
-	_streams["achieve"]   = _arp3([587.33, 739.99, 987.77], 0.085, 0.25)
-	_streams["prestige"]  = _chord([261.63, 329.63, 392.00, 523.25], 0.40, 0.28)
-	_streams["pad"]       = _pad(4.0)
+	_streams["tap"]         = _ping(880.0, 880.0, 0.022, 0.14)
+	_streams["tick"]        = _noise(0.026, 0.12, 2.0)
+	_streams["buy"]         = _ping(620.0, 1040.0, 0.090, 0.28)
+	_streams["sell"]        = _chime(1046.5, 0.120, 0.22)
+	_streams["unlock"]      = _arp3([523.25, 659.26, 783.99], 0.072, 0.25)
+	_streams["milestone"]   = _arp3([523.25, 659.26, 783.99, 1046.5], 0.105, 0.27)
+	_streams["achieve"]     = _arp3([587.33, 739.99, 987.77, 1174.66], 0.085, 0.26)
+	_streams["prestige"]    = _chord([261.63, 329.63, 392.00, 523.25, 659.26], 0.55, 0.30)
+	_streams["daily"]       = _arp3([783.99, 987.77, 1174.66, 1318.51], 0.090, 0.26)
+	_streams["event_start"] = _ping(440.0, 880.0, 0.18, 0.24)
+	_streams["error"]       = _noise(0.080, 0.18, 0.8)
+	_streams["pad"]         = _pad(4.0)
 
 func _process(_delta: float) -> void:
-	if _ambient: _ambient.stream_paused = muted
+	if _ambient:
+		_ambient.stream_paused = muted
+		_ambient.volume_db = muted_music_db()
 
 func _on_delivered(_amount: float, _hub: int) -> void:
 	var now := Time.get_ticks_msec()
@@ -47,12 +60,22 @@ func play(name: String, pitch := 1.0, vol_db := 0.0) -> void:
 	if muted or not _streams.has(name): return
 	var p := _players[_next]; _next = (_next + 1) % _players.size()
 	p.stream = _streams[name]; p.pitch_scale = clampf(pitch, 0.5, 2.0)
-	p.volume_db = vol_db; p.play()
+	p.volume_db = vol_db + sfx_vol; p.play()
 
 func tick() -> void:
 	var now := Time.get_ticks_msec()
 	if now - _last_tick < 70: return
 	_last_tick = now; play("tick", randf_range(0.85, 1.20), -10.0)
+
+func set_music_vol(db: float) -> void:
+	music_vol = clampf(db, -40.0, 0.0)
+	if _ambient: _ambient.volume_db = muted_music_db()
+
+func set_sfx_vol(db: float) -> void:
+	sfx_vol = clampf(db, -20.0, 6.0)
+
+func muted_music_db() -> float:
+	return -80.0 if muted else music_vol
 
 # ── Oscillators ───────────────────────────────────────────────────────────────
 
@@ -164,5 +187,10 @@ func _wav(data: PackedByteArray) -> AudioStreamWAV:
 
 # ── Persistence ───────────────────────────────────────────────────────────────
 
-func to_dict() -> Dictionary: return {"muted": muted}
-func from_dict(d: Dictionary) -> void: muted = bool(d.get("muted", false))
+func to_dict() -> Dictionary:
+	return {"muted": muted, "music_vol": music_vol, "sfx_vol": sfx_vol}
+
+func from_dict(d: Dictionary) -> void:
+	muted = bool(d.get("muted", false))
+	music_vol = float(d.get("music_vol", -20.0))
+	sfx_vol = float(d.get("sfx_vol", 0.0))

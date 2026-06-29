@@ -2,20 +2,25 @@ extends RefCounted
 class_name UITheme
 ## Modern dark theme – glassmorphic, vibrant, mobile-first.
 
-const BG0    := Color(0.04, 0.05, 0.10)
-const BG1    := Color(0.07, 0.10, 0.18)
-const PANEL  := Color(0.10, 0.14, 0.24)
-const PANEL2 := Color(0.13, 0.17, 0.28)
-const BORDER := Color(0.20, 0.26, 0.42)
-const INK    := Color(0.95, 0.97, 1.00)
-const MUTED  := Color(0.52, 0.60, 0.76)
-const ACCENT := Color(0.28, 0.52, 1.00)
+const BG0      := Color(0.04, 0.05, 0.10)
+const BG1      := Color(0.07, 0.10, 0.18)
+const PANEL    := Color(0.10, 0.14, 0.24)
+const PANEL2   := Color(0.13, 0.17, 0.28)
+const BORDER   := Color(0.20, 0.26, 0.42)
+const INK      := Color(0.95, 0.97, 1.00)
+const MUTED    := Color(0.52, 0.60, 0.76)
+const ACCENT   := Color(0.28, 0.52, 1.00)
 const ACCENT_D := Color(0.18, 0.38, 0.82)
-const GREEN  := Color(0.13, 0.82, 0.48)
-const GREEN_D := Color(0.08, 0.62, 0.35)
-const GOLD   := Color(1.00, 0.78, 0.22)
-const CYAN   := Color(0.22, 0.82, 0.95)
-const VIOLET := Color(0.62, 0.42, 1.00)
+const GREEN    := Color(0.13, 0.82, 0.48)
+const GREEN_D  := Color(0.08, 0.62, 0.35)
+const GOLD     := Color(1.00, 0.78, 0.22)
+const GOLD_D   := Color(0.82, 0.58, 0.10)
+const CYAN     := Color(0.22, 0.82, 0.95)
+const VIOLET   := Color(0.62, 0.42, 1.00)
+const PRESTIGE := Color(0.82, 0.62, 1.00)   # prestige gems / prestige UI
+const ORANGE   := Color(1.00, 0.52, 0.15)   # events / alerts
+const RED      := Color(0.92, 0.28, 0.32)   # error / danger
+const PINK     := Color(1.00, 0.40, 0.72)   # special highlight
 
 static func font(weight := "SemiBold") -> FontFile:
 	return load("res://assets/fonts/Poppins-%s.ttf" % weight)
@@ -145,4 +150,69 @@ static func pill(bg := PANEL) -> StyleBoxFlat:
 	s.content_margin_left = 14; s.content_margin_right = 16
 	s.content_margin_top = 8; s.content_margin_bottom = 8
 	s.border_color = BORDER; s.set_border_width_all(1)
+	return s
+
+## Prestige shop / prestige info card
+static func prestige_card() -> StyleBoxFlat:
+	var s := _panel(Color(0.16, 0.10, 0.26), 18); s.set_content_margin_all(12)
+	s.border_color = Color(PRESTIGE.r, PRESTIGE.g, PRESTIGE.b, 0.60); s.set_border_width_all(1)
+	s.shadow_color = Color(PRESTIGE.r, PRESTIGE.g, PRESTIGE.b, 0.25)
+	s.shadow_size = 10; s.shadow_offset = Vector2(0, 4)
+	return s
+
+## Event banner (colored left border)
+static func event_banner(col: Color) -> StyleBoxFlat:
+	var s := StyleBoxFlat.new()
+	s.bg_color = Color(col.r, col.g, col.b, 0.18); s.set_corner_radius_all(14)
+	s.set_content_margin_all(12)
+	s.border_color = col; s.border_width_left = 4
+	return s
+
+## Achievement card
+static func achievement_card(done: bool) -> StyleBoxFlat:
+	var bg := Color(0.12, 0.16, 0.28) if not done else Color(0.08, 0.22, 0.14)
+	var s := _panel(bg, 14); s.set_content_margin_all(10)
+	if done:
+		s.border_color = Color(GREEN.r, GREEN.g, GREEN.b, 0.55); s.set_border_width_all(1)
+	return s
+
+## Progress bar background
+static func prog_bg() -> StyleBoxFlat:
+	var s := StyleBoxFlat.new(); s.bg_color = Color(0.12, 0.16, 0.28); s.set_corner_radius_all(6)
+	return s
+
+## Progress bar fill (colour = accent/green/gold based on context)
+static func prog_fill(col: Color) -> StyleBoxFlat:
+	var s := StyleBoxFlat.new(); s.bg_color = col; s.set_corner_radius_all(6)
+	s.shadow_color = Color(col.r, col.g, col.b, 0.45); s.shadow_size = 4
+	return s
+
+## Daily reward card
+static func daily_card(claimed: bool, current: bool) -> StyleBoxFlat:
+	var bg: Color
+	if claimed:   bg = Color(0.08, 0.22, 0.14)
+	elif current: bg = Color(0.20, 0.16, 0.06)
+	else:         bg = PANEL
+	var s := _panel(bg, 14); s.set_content_margin_all(8)
+	if current:
+		s.border_color = GOLD; s.set_border_width_all(2)
+		s.shadow_color = Color(GOLD.r, GOLD.g, GOLD.b, 0.40); s.shadow_size = 8
+	return s
+
+## Danger / destructive button (prestige confirm, wipe)
+static func danger_btn() -> StyleBoxFlat:
+	var s := StyleBoxFlat.new(); s.bg_color = Color(0.55, 0.10, 0.14); s.set_corner_radius_all(14)
+	s.content_margin_left = 16; s.content_margin_right = 16
+	s.content_margin_top = 12; s.content_margin_bottom = 12
+	s.border_color = RED.lightened(0.20); s.border_width_top = 2
+	s.shadow_color = Color(RED.r, RED.g, RED.b, 0.40); s.shadow_size = 8; s.shadow_offset = Vector2(0, 4)
+	return s
+
+## Glowing "ready to prestige" button
+static func prestige_btn_ready() -> StyleBoxFlat:
+	var s := StyleBoxFlat.new(); s.bg_color = Color(0.42, 0.18, 0.62); s.set_corner_radius_all(18)
+	s.content_margin_left = 18; s.content_margin_right = 18
+	s.content_margin_top = 14; s.content_margin_bottom = 14
+	s.border_color = PRESTIGE.lightened(0.25); s.border_width_top = 2
+	s.shadow_color = Color(PRESTIGE.r, PRESTIGE.g, PRESTIGE.b, 0.55); s.shadow_size = 16; s.shadow_offset = Vector2(0, 4)
 	return s

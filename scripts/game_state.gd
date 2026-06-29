@@ -45,17 +45,20 @@ func max_cities() -> int:
 	return Economy.country_cities(current_country).size() - 1   # excludes capital
 
 func speed_factor() -> float:
-	return 1.0 + 0.03 * float(levels["speed"]) + 0.04 * float(talents["speed"])
+	var base := 1.0 + 0.03 * float(levels["speed"]) + 0.04 * float(talents["speed"])
+	return base * Events.current_spd_mult
 
 func vip_mult() -> float:
 	return 2.0 if Billing.vip else 1.0
 
 func global_mult() -> float:
 	return (1.0 + 0.05 * float(influence)) * (1.0 + 0.06 * float(talents["global"])) \
-		* (1.0 + 0.25 * float(gem_boost)) * Billing.perm_mult * vip_mult()
+		* (1.0 + 0.25 * float(gem_boost)) * Billing.perm_mult * vip_mult() \
+		* Events.current_mult * Prestige.permanent_mult
 
 func offline_cap() -> float:
-	return OFFLINE_CAP_BASE + (79200.0 if Billing.vip else 0.0)
+	var prestige_extra: float = OFFLINE_CAP_BASE * Prestige.extra_offline_pct()
+	return OFFLINE_CAP_BASE + prestige_extra + (79200.0 if Billing.vip else 0.0)
 
 func _route_dist(r: int) -> float:
 	var cities := Economy.country_cities(current_country)
@@ -141,6 +144,7 @@ func buy_drones() -> int:
 		return 0
 	credits -= cost; drones += count
 	_rebuild_drones()
+	Achievements.note_drone_buy(count, drones)
 	return count
 
 # ---------------------------------------------------------------- cities / country
@@ -182,6 +186,7 @@ func expand_country() -> bool:
 	cities_unlocked = 1
 	influence += 3 + int(current_country / 4)
 	influence_total = influence_total + 3 + int(current_country / 4)
+	if Prestige.has_shop("gem_mine"): gems += 1
 	_rebuild_drones()
 	country_changed.emit(current_country)
 	SaveSystem.save_game()
@@ -239,12 +244,15 @@ func buy_gem_boost() -> bool:
 	if gems < c:
 		return false
 	gems -= c; gem_boost += 1
+	Achievements.note_gem_boost(gem_boost)
+	Achievements.note_gems_spent(c)
 	return true
 
 func buy_gem_cash(cost: int, seconds: float) -> bool:
 	if gems < cost:
 		return false
 	gems -= cost
+	Achievements.note_gems_spent(cost)
 	credits += income_per_sec() * seconds
 	return true
 
@@ -262,6 +270,7 @@ func collect_offline(multiplier: float) -> float:
 	var amount := pending_offline * multiplier
 	credits += amount
 	pending_offline = 0.0; pending_offline_seconds = 0.0
+	Achievements.note_offline(amount)
 	return amount
 
 # ---------------------------------------------------------------- persistence

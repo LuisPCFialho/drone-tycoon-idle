@@ -1,0 +1,87 @@
+extends Node
+## Basic anti-cheat layer (autoload: AntiCheat).
+## Detects time tampering, implausible balance spikes, enforces caps.
+
+const MAX_OFFLINE_SECS := 86400.0         # hard 24h cap
+const RATE_LIMIT_MS    := 50              # min ms between purchases
+const XOR_KEY          := "DroneTycoonSky2026"
+
+var _flags := 0
+var _last_purchase_ms := 0
+var _prev_credits := 0.0
+var _prev_check_ms := 0
+
+func _ready() -> void:
+    if has_node("/root/GameState"):
+        _prev_credits = GameState.credits
+    _prev_check_ms = Time.get_ticks_msec()
+
+func _process(_delta: float) -> void:
+    var now_ms := Time.get_ticks_msec()
+    if now_ms - _prev_check_ms < 5000: return   # check every 5 s
+    _prev_check_ms = now_ms
+    if not has_node("/root/GameState"): return
+    var cur := GameState.credits
+    var diff := cur - _prev_credits
+    # Max possible income in 5s: income_per_sec * 5 * any event mult * safety factor 3x
+    var max_possible := GameState.income_per_sec() * 5.0 * 3.0 * (Events.current_mult if has_node("/root/Events") else 1.0)
+    if diff > max_possible + 1_000_000.0:   # +1M tolerance for manual purchases
+        _flag("balance_spike diff=%.0f max=%.0f" % [diff, max_possible])
+    _prev_credits = cur
+
+## Validate a timestamp from a save file. Returns safe elapsed seconds.
+func validate_elapsed(saved_ts: int) -> float:
+    var now_ts: int = int(Time.get_unix_time_from_system())
+    if saved_ts > now_ts + 300:
+        _flag("future_ts saved=%d now=%d" % [saved_ts, now_ts])
+        return 0.0
+    var elapsed: float = float(max(0, now_ts - saved_ts))
+    return minf(elapsed, MAX_OFFLINE_SECS)
+
+## Check purchase rate limiting. Returns true if allowed.
+func allow_purchase() -> bool:
+    var now := Time.get_ticks_msec()
+    if now - _last_purchase_ms < RATE_LIMIT_MS: return false
+    _last_purchase_ms = now
+    return true
+
+## Clamp credits to a sane range.
+func clamp_credits(v: float) -> float:
+    return clampf(v, 0.0, 1e18)
+
+## Clamp gems to sane range.
+func clamp_gems(v: int) -> int:
+    return clampi(v, 0, 999_999)
+
+## Simple XOR obfuscation (not encryption — deters casual save editing).
+func encode(data: String) -> String:
+    var result := ""
+    var kl: int = XOR_KEY.length()
+    for i in range(data.length()):
+        var c: int = data.unicode_at(i) ^ XOR_KEY.unicode_at(i % kl)
+        result += "%02x" % c
+    return result
+
+func decode(hex: String) -> String:
+    var result := ""
+    var kl: int = XOR_KEY.length()
+    var pairs: int = hex.length() / 2
+    for i in range(pairs):
+        var b: int = hex.substr(i * 2, 2).hex_to_int()
+        result += char(b ^ XOR_KEY.unicode_at(i % kl))
+    return result
+
+## Fast checksum for integrity validation.
+func checksum(data: String) -> String:
+    var h: int = 0x811C9DC5  # FNV-1a seed
+    for i in range(data.length()):
+        h = h ^ data.unicode_at(i)
+        h = (h * 0x01000193) & 0xFFFFFFFF
+    return "%08x" % h
+
+func _flag(reason: String) -> void:
+    _flags += 1
+    push_warning("AntiCheat #%d: %s" % [_flags, reason])
+
+func suspicious() -> bool:
+    return _flags >= 5
