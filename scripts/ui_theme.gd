@@ -1,111 +1,148 @@
 extends RefCounted
 class_name UITheme
-## Premium dark UI theme: deep navy panels, vibrant accents, soft shadows, Poppins.
+## Modern dark theme – glassmorphic, vibrant, mobile-first.
 
-const BG0 := Color(0.055, 0.07, 0.13)
-const BG1 := Color(0.09, 0.12, 0.20)
-const PANEL := Color(0.13, 0.16, 0.27)
-const PANEL2 := Color(0.16, 0.20, 0.33)
-const BORDER := Color(0.24, 0.30, 0.46)
-const INK := Color(0.93, 0.96, 1.0)
-const MUTED := Color(0.60, 0.67, 0.80)
-const ACCENT := Color(0.32, 0.56, 1.0)
-const ACCENT_D := Color(0.22, 0.42, 0.85)
-const GREEN := Color(0.16, 0.78, 0.45)
-const GREEN_D := Color(0.11, 0.62, 0.35)
-const GOLD := Color(1.0, 0.80, 0.28)
-const CYAN := Color(0.30, 0.85, 0.95)
-const VIOLET := Color(0.66, 0.45, 1.0)
+const BG0    := Color(0.04, 0.05, 0.10)
+const BG1    := Color(0.07, 0.10, 0.18)
+const PANEL  := Color(0.10, 0.14, 0.24)
+const PANEL2 := Color(0.13, 0.17, 0.28)
+const BORDER := Color(0.20, 0.26, 0.42)
+const INK    := Color(0.95, 0.97, 1.00)
+const MUTED  := Color(0.52, 0.60, 0.76)
+const ACCENT := Color(0.28, 0.52, 1.00)
+const ACCENT_D := Color(0.18, 0.38, 0.82)
+const GREEN  := Color(0.13, 0.82, 0.48)
+const GREEN_D := Color(0.08, 0.62, 0.35)
+const GOLD   := Color(1.00, 0.78, 0.22)
+const CYAN   := Color(0.22, 0.82, 0.95)
+const VIOLET := Color(0.62, 0.42, 1.00)
 
 static func font(weight := "SemiBold") -> FontFile:
 	return load("res://assets/fonts/Poppins-%s.ttf" % weight)
 
 static func build() -> Theme:
 	var t := Theme.new()
-	t.default_font = font("SemiBold")
-	t.default_font_size = 30
-
-	t.set_stylebox("normal", "Button", _btn(ACCENT))
-	t.set_stylebox("hover", "Button", _btn(ACCENT.lightened(0.07)))
-	t.set_stylebox("pressed", "Button", _btn(ACCENT_D))
-	t.set_stylebox("disabled", "Button", _btn(Color(0.22, 0.26, 0.36)))
-	t.set_stylebox("focus", "Button", StyleBoxEmpty.new())
-	t.set_color("font_color", "Button", Color.WHITE)
-	t.set_color("font_hover_color", "Button", Color.WHITE)
-	t.set_color("font_pressed_color", "Button", Color(0.9, 0.94, 1))
-	t.set_color("font_disabled_color", "Button", Color(0.5, 0.55, 0.66))
-	t.set_font("font", "Button", font("Bold"))
-	t.set_font_size("font_size", "Button", 27)
-
-	t.set_stylebox("panel", "PanelContainer", _panel(PANEL, 16))
-
-	t.set_stylebox("panel", "TabContainer", _panel(BG1, 16))
-	t.set_stylebox("tab_selected", "TabContainer", _tab(ACCENT))
-	t.set_stylebox("tab_unselected", "TabContainer", _tab(Color(0.16, 0.19, 0.30)))
-	t.set_stylebox("tab_hovered", "TabContainer", _tab(Color(0.2, 0.24, 0.38)))
-	t.set_color("font_selected_color", "TabContainer", Color.WHITE)
-	t.set_color("font_unselected_color", "TabContainer", MUTED)
-	t.set_font_size("font_size", "TabContainer", 23)
-	t.set_constant("side_margin", "TabContainer", 4)
-
+	t.default_font = font("SemiBold"); t.default_font_size = 26
+	t.set_stylebox("normal",   "Button", _btn(ACCENT))
+	t.set_stylebox("hover",    "Button", _btn(ACCENT.lightened(0.10)))
+	t.set_stylebox("pressed",  "Button", _btn(ACCENT_D))
+	t.set_stylebox("disabled", "Button", _btn(Color(0.16, 0.20, 0.32)))
+	t.set_stylebox("focus",    "Button", StyleBoxEmpty.new())
+	t.set_color("font_color",          "Button", Color.WHITE)
+	t.set_color("font_hover_color",    "Button", Color.WHITE)
+	t.set_color("font_pressed_color",  "Button", Color(0.84, 0.90, 1.0))
+	t.set_color("font_disabled_color", "Button", Color(0.36, 0.42, 0.55))
+	t.set_font("font", "Button", font("Bold")); t.set_font_size("font_size", "Button", 24)
+	t.set_stylebox("panel", "PanelContainer", _panel(PANEL, 20))
+	t.set_stylebox("panel", "Panel", _panel(PANEL, 20))
 	t.set_color("font_color", "Label", INK)
 	t.set_color("font_color", "CheckButton", INK)
-	t.set_font_size("font_size", "CheckButton", 26)
+	t.set_font_size("font_size", "CheckButton", 24)
+	t.set_stylebox("normal", "CheckButton", StyleBoxEmpty.new())
 	return t
 
+# ── base helpers ─────────────────────────────────────────────────────────────
+
 static func _btn(bg: Color) -> StyleBoxFlat:
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = bg
-	sb.set_corner_radius_all(22)
-	sb.content_margin_left = 18; sb.content_margin_right = 18
-	sb.content_margin_top = 14; sb.content_margin_bottom = 14
-	sb.border_color = bg.lightened(0.22)
-	sb.border_width_top = 2
-	sb.shadow_color = Color(0, 0, 0, 0.35)
-	sb.shadow_size = 6; sb.shadow_offset = Vector2(0, 4)
-	return sb
+	var s := StyleBoxFlat.new(); s.bg_color = bg; s.set_corner_radius_all(22)
+	s.content_margin_left = 18; s.content_margin_right = 18
+	s.content_margin_top = 13; s.content_margin_bottom = 13
+	s.border_color = bg.lightened(0.28); s.border_width_top = 2
+	s.shadow_color = Color(0,0,0,0.45); s.shadow_size = 8; s.shadow_offset = Vector2(0,4)
+	return s
 
 static func _panel(bg: Color, radius: int) -> StyleBoxFlat:
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = bg
-	sb.set_corner_radius_all(maxi(radius, 20))
-	sb.set_content_margin_all(14)
-	sb.border_color = BORDER
-	sb.set_border_width_all(1)
-	sb.shadow_color = Color(0, 0, 0, 0.30)
-	sb.shadow_size = 7; sb.shadow_offset = Vector2(0, 4)
-	return sb
+	var s := StyleBoxFlat.new(); s.bg_color = bg; s.set_corner_radius_all(radius)
+	s.set_content_margin_all(16); s.border_color = BORDER; s.set_border_width_all(1)
+	s.shadow_color = Color(0,0,0,0.35); s.shadow_size = 8; s.shadow_offset = Vector2(0,4)
+	return s
 
-static func _tab(bg: Color) -> StyleBoxFlat:
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = bg
-	sb.corner_radius_top_left = 12; sb.corner_radius_top_right = 12
-	sb.content_margin_left = 10; sb.content_margin_right = 10
-	sb.content_margin_top = 8; sb.content_margin_bottom = 8
-	return sb
+# ── public style functions ────────────────────────────────────────────────────
 
-## Pill/card stylebox with an accent left stripe.
-static func card(accent: Color) -> StyleBoxFlat:
-	var sb := _panel(PANEL2, 14)
-	sb.border_width_left = 5
-	sb.border_color = accent
-	return sb
+## Frosted-glass panel (for HUD overlay on the map)
+static func glass() -> StyleBoxFlat:
+	var s := StyleBoxFlat.new()
+	s.bg_color = Color(0.06, 0.09, 0.18, 0.92); s.set_corner_radius_all(22)
+	s.set_content_margin_all(14); s.border_color = Color(0.36, 0.52, 0.74, 0.55); s.set_border_width_all(1)
+	s.shadow_color = Color(0,0,0,0.55); s.shadow_size = 14; s.shadow_offset = Vector2(0,5)
+	return s
 
+## Card with accent-tinted background and glowing border
+static func action_card(accent: Color) -> StyleBoxFlat:
+	var base := PANEL2.lerp(accent, 0.10)
+	var s := _panel(base, 22); s.set_content_margin_all(18)
+	s.border_color = lerp(BORDER, accent, 0.60); s.set_border_width_all(1)
+	s.shadow_color = Color(accent.r, accent.g, accent.b, 0.25)
+	s.shadow_size = 16; s.shadow_offset = Vector2(0, 5)
+	return s
+
+## Full-width action button (buy / unlock)
+static func action_btn(color: Color) -> StyleBoxFlat:
+	var s := StyleBoxFlat.new(); s.bg_color = color; s.set_corner_radius_all(18)
+	s.content_margin_left = 14; s.content_margin_right = 14
+	s.content_margin_top = 20; s.content_margin_bottom = 20
+	s.border_color = color.lightened(0.32); s.border_width_top = 2
+	s.shadow_color = Color(color.r, color.g, color.b, 0.48)
+	s.shadow_size = 12; s.shadow_offset = Vector2(0, 5)
+	return s
+
+static func action_btn_disabled() -> StyleBoxFlat:
+	var s := StyleBoxFlat.new(); s.bg_color = Color(0.14, 0.18, 0.30); s.set_corner_radius_all(18)
+	s.content_margin_left = 14; s.content_margin_right = 14
+	s.content_margin_top = 20; s.content_margin_bottom = 20
+	return s
+
+## Segmented control button (x1 / x10 / x100 / Max)
+static func seg(active: bool) -> StyleBoxFlat:
+	var s := StyleBoxFlat.new()
+	s.bg_color = ACCENT if active else Color(0.13, 0.17, 0.28); s.set_corner_radius_all(14)
+	s.content_margin_left = 10; s.content_margin_right = 10
+	s.content_margin_top = 11; s.content_margin_bottom = 11
+	if active: s.border_color = ACCENT.lightened(0.32); s.border_width_top = 2
+	s.shadow_color = Color(ACCENT.r, ACCENT.g, ACCENT.b, 0.40 if active else 0.0)
+	s.shadow_size = 8 if active else 0
+	return s
+
+## Bottom-panel background (rounded top, flat bottom)
+static func bottom_panel() -> StyleBoxFlat:
+	var s := StyleBoxFlat.new(); s.bg_color = Color(0.09, 0.12, 0.22)
+	s.corner_radius_top_left = 28; s.corner_radius_top_right = 28
+	s.set_content_margin_all(0); s.border_color = BORDER; s.border_width_top = 1
+	s.shadow_color = Color(0,0,0,0.50); s.shadow_size = 16; s.shadow_offset = Vector2(0,-6)
+	return s
+
+## Nav bar item – active or inactive
+static func nav_item(active: bool) -> StyleBoxFlat:
+	var s := StyleBoxFlat.new()
+	s.bg_color = Color(ACCENT.r, ACCENT.g, ACCENT.b, 0.22 if active else 0.0)
+	s.set_corner_radius_all(20); s.set_content_margin_all(6)
+	return s
+
+## Ad / rewarded pill button
+static func ad_btn() -> StyleBoxFlat:
+	var s := StyleBoxFlat.new(); s.bg_color = Color(0.08, 0.44, 0.24); s.set_corner_radius_all(16)
+	s.content_margin_left = 14; s.content_margin_right = 14
+	s.content_margin_top = 10; s.content_margin_bottom = 10
+	s.border_color = GREEN.lightened(0.30); s.border_width_top = 1
+	s.shadow_color = Color(0,0.35,0.18,0.40); s.shadow_size = 6; s.shadow_offset = Vector2(0,3)
+	return s
+
+## Generic solid colour box (popups, badges, etc.)
+static func solid(bg: Color, radius := 16) -> StyleBoxFlat:
+	var s := StyleBoxFlat.new(); s.bg_color = bg; s.set_corner_radius_all(radius)
+	s.content_margin_left = 14; s.content_margin_right = 14
+	s.content_margin_top = 10; s.content_margin_bottom = 10
+	s.border_color = bg.lightened(0.24); s.border_width_top = 2
+	s.shadow_color = Color(0,0,0,0.32); s.shadow_size = 5; s.shadow_offset = Vector2(0,3)
+	return s
+
+## Kept for compat (aliases action_card)
+static func card(accent: Color) -> StyleBoxFlat: return action_card(accent)
+
+## Kept for compat
 static func pill(bg := PANEL) -> StyleBoxFlat:
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = bg
-	sb.set_corner_radius_all(22)
-	sb.content_margin_left = 12; sb.content_margin_right = 14
-	sb.content_margin_top = 6; sb.content_margin_bottom = 6
-	sb.border_color = BORDER; sb.set_border_width_all(1)
-	return sb
-
-static func solid(bg: Color, radius := 14) -> StyleBoxFlat:
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = bg
-	sb.set_corner_radius_all(radius)
-	sb.content_margin_left = 14; sb.content_margin_right = 14
-	sb.content_margin_top = 10; sb.content_margin_bottom = 10
-	sb.border_color = bg.lightened(0.2); sb.border_width_top = 2
-	sb.shadow_color = Color(0, 0, 0, 0.3); sb.shadow_size = 4; sb.shadow_offset = Vector2(0, 2)
-	return sb
+	var s := StyleBoxFlat.new(); s.bg_color = bg; s.set_corner_radius_all(24)
+	s.content_margin_left = 14; s.content_margin_right = 16
+	s.content_margin_top = 8; s.content_margin_bottom = 8
+	s.border_color = BORDER; s.set_border_width_all(1)
+	return s

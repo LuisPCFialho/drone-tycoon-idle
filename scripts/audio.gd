@@ -1,136 +1,194 @@
 extends Node
-## Procedural SFX (autoload: Audio). Synthesizes tiny PCM clips at startup — no
-## audio asset files needed. Public: play(name), tick(), muted, to_dict/from_dict.
+## Procedural SFX — synthesises PCM clips at startup, no audio files needed.
+## Public API: play(name), tick(), muted, to_dict/from_dict.
 
-const RATE := 22050
+const RATE := 44100
 var muted := false
 var _streams := {}
 var _players: Array[AudioStreamPlayer] = []
 var _next := 0
-var _last_tick := 0
 var _last_sell := 0
+var _last_tick := 0
 var _ambient: AudioStreamPlayer
 
 func _ready() -> void:
-	_streams["tick"] = _tone(180.0, 0.04, "noise", 0.18, 2.0)
-	_streams["break"] = _tone(120.0, 0.07, "noise", 0.22, 2.0)
-	_streams["tap"] = _tone(680.0, 0.03, "square", 0.12, 3.0)
-	_streams["buy"] = _tone(520.0, 0.06, "square", 0.20, 3.0)
-	_streams["sell"] = _two(660.0, 990.0, 0.14, 0.28)
-	_streams["achieve"] = _two(784.0, 1175.0, 0.22, 0.30)
-	_streams["prestige"] = _tone(523.0, 0.45, "sine", 0.30, 1.2)
-	_streams["milestone"] = _arp([523.0, 659.0, 784.0, 1047.0], 0.5, 0.26)
-	_streams["unlock"] = _two(587.0, 880.0, 0.26, 0.28)
-	for i in range(10):
-		var p := AudioStreamPlayer.new()
-		add_child(p)
-		_players.append(p)
-	_ambient = AudioStreamPlayer.new()
-	add_child(_ambient)
-	_ambient.stream = _pad(4.0)
-	_ambient.volume_db = -26.0
-	_ambient.play()
+	_build_streams()
+	for i in range(12):
+		var p := AudioStreamPlayer.new(); add_child(p); _players.append(p)
+	_ambient = AudioStreamPlayer.new(); add_child(_ambient)
+	_ambient.stream = _streams["pad"]
+	_ambient.volume_db = -20.0; _ambient.play()
 	if has_node("/root/GameState"):
 		GameState.delivered.connect(_on_delivered)
 		GameState.country_changed.connect(func(_i): play("milestone", 1.0, -2.0))
 		GameState.city_unlocked.connect(func(_i): play("unlock", 1.0, -3.0))
 
+func _build_streams() -> void:
+	# UI
+	_streams["tap"]  = _ping(880.0, 880.0, 0.025, 0.14)
+	_streams["tick"] = _noise(0.028, 0.12, 2.0)
+	# Purchase — rising pitch ping (satisfying click)
+	_streams["buy"]  = _ping(660.0, 1100.0, 0.095, 0.30)
+	# Delivery arrival — soft chime
+	_streams["sell"] = _chime(1046.5, 0.130, 0.22)
+	# City unlocked — 3-note ascending arpeggio
+	_streams["unlock"] = _arp3([523.25, 659.26, 783.99], 0.075, 0.26)
+	# Country change — 4-note triumphant fanfare
+	_streams["milestone"] = _arp3([523.25, 659.26, 783.99, 1046.5], 0.110, 0.28)
+	# Achievement
+	_streams["achieve"] = _arp3([587.33, 739.99, 987.77], 0.090, 0.26)
+	# Prestige / big event — chord strike
+	_streams["prestige"] = _chord([261.63, 329.63, 392.00, 523.25], 0.45, 0.30)
+	# Ambient looping pad (stereo, 8 s)
+	_streams["pad"] = _pad(8.0)
+
 func _process(_delta: float) -> void:
-	if _ambient:
-		_ambient.stream_paused = muted
+	if _ambient: _ambient.stream_paused = muted
 
 func _on_delivered(_amount: float, _hub: int) -> void:
 	var now := Time.get_ticks_msec()
-	if now - _last_sell < 150:
-		return
+	if now - _last_sell < 140: return
 	_last_sell = now
-	play("sell", randf_range(0.95, 1.12), -5.0)
+	play("sell", randf_range(0.93, 1.10), -5.0)
 
 func play(name: String, pitch := 1.0, vol_db := 0.0) -> void:
-	if muted or not _streams.has(name):
-		return
-	var p := _players[_next]
-	_next = (_next + 1) % _players.size()
-	p.stream = _streams[name]
-	p.pitch_scale = clampf(pitch, 0.5, 2.0)
-	p.volume_db = vol_db
-	p.play()
+	if muted or not _streams.has(name): return
+	var p := _players[_next]; _next = (_next + 1) % _players.size()
+	p.stream = _streams[name]; p.pitch_scale = clampf(pitch, 0.5, 2.0)
+	p.volume_db = vol_db; p.play()
 
 func tick() -> void:
 	var now := Time.get_ticks_msec()
-	if now - _last_tick < 70:
-		return
-	_last_tick = now
-	play("tick", randf_range(0.85, 1.2), -9.0)
+	if now - _last_tick < 70: return
+	_last_tick = now; play("tick", randf_range(0.85, 1.20), -10.0)
 
-func _tone(freq: float, dur: float, kind: String, vol: float, decay: float) -> AudioStreamWAV:
-	var n := int(dur * RATE)
-	var data := PackedByteArray()
-	data.resize(n * 2)
-	for i in range(n):
-		var t := float(i) / RATE
-		var env: float = pow(1.0 - float(i) / n, decay)
-		var s := 0.0
-		match kind:
-			"sine": s = sin(TAU * freq * t)
-			"square": s = 1.0 if sin(TAU * freq * t) >= 0.0 else -1.0
-			"noise": s = randf() * 2.0 - 1.0
-		var v := int(clampf(s * env * vol, -1.0, 1.0) * 32767.0)
-		data.encode_s16(i * 2, v)
-	return _wav(data)
+# ── Oscillators ───────────────────────────────────────────────────────────────
 
-func _two(f1: float, f2: float, dur: float, vol: float) -> AudioStreamWAV:
-	var n := int(dur * RATE)
-	var data := PackedByteArray()
-	data.resize(n * 2)
-	var half := n / 2
-	for i in range(n):
-		var t := float(i) / RATE
-		var freq: float = f1 if i < half else f2
-		var env: float = pow(1.0 - float(i) / n, 1.5)
-		var v := int(clampf(sin(TAU * freq * t) * env * vol, -1.0, 1.0) * 32767.0)
-		data.encode_s16(i * 2, v)
-	return _wav(data)
+func _tri(freq: float, t: float) -> float:
+	var x := fmod(freq * t, 1.0)
+	return 1.0 - 4.0 * abs(x - 0.5)
 
-func _arp(freqs: Array, dur: float, vol: float) -> AudioStreamWAV:
+func _sine(freq: float, t: float) -> float:
+	return sin(TAU * freq * t)
+
+# Smooth ADSR envelope
+func _env(i: int, n: int, atk_ms: float, dec_ms: float, sus: float, rel_ms: float) -> float:
+	var atk := int(atk_ms * RATE / 1000.0)
+	var dec := int(dec_ms * RATE / 1000.0)
+	var rel := int(rel_ms * RATE / 1000.0)
+	var rel0 := n - rel
+	if i < atk:     return float(i) / float(max(1, atk))
+	elif i < atk + dec: return lerpf(1.0, sus, float(i - atk) / float(max(1, dec)))
+	elif i < rel0:  return sus
+	else:           return sus * (1.0 - float(i - rel0) / float(max(1, rel)))
+
+# ── Sound builders ────────────────────────────────────────────────────────────
+
+## Rising-pitch triangle ping — used for "buy" and "tap"
+func _ping(f_start: float, f_end: float, dur: float, vol: float) -> AudioStreamWAV:
 	var n := int(dur * RATE)
 	var data := PackedByteArray(); data.resize(n * 2)
-	var seg := n / freqs.size()
 	for i in range(n):
-		var idx: int = min(i / max(1, seg), freqs.size() - 1)
-		var freq: float = freqs[idx]
-		var local := float(i - idx * seg) / float(max(1, seg))
-		var env: float = pow(1.0 - local, 1.2)
-		var v := int(clampf(sin(TAU * freq * float(i) / RATE) * env * vol, -1.0, 1.0) * 32767.0)
-		data.encode_s16(i * 2, v)
-	return _wav(data)
+		var t := float(i) / RATE; var frac := float(i) / n
+		var freq := lerpf(f_start, f_end, pow(frac, 0.5))
+		var env := _env(i, n, 3.0, dur * 600.0, 0.0, 8.0)
+		# Triangle + slight sine harmonic for warmth
+		var s := (_tri(freq, t) * 0.75 + _sine(freq * 2.0, t) * 0.25) * env * vol
+		data.encode_s16(i * 2, int(clampf(s, -1.0, 1.0) * 32767.0))
+	return _wav(data, false)
 
+## Sine chime with soft attack — used for "sell" (delivery)
+func _chime(freq: float, dur: float, vol: float) -> AudioStreamWAV:
+	var n := int(dur * RATE)
+	var data := PackedByteArray(); data.resize(n * 2)
+	for i in range(n):
+		var t := float(i) / RATE
+		var env := _env(i, n, 4.0, dur * 700.0, 0.0, 15.0)
+		# Fundamental + 2nd harmonic shimmer
+		var s := (_sine(freq, t) * 0.80 + _sine(freq * 2.0, t) * 0.20) * env * vol
+		data.encode_s16(i * 2, int(clampf(s, -1.0, 1.0) * 32767.0))
+	return _wav(data, false)
+
+## Ascending note arpeggio (3 or 4 notes) — unlock, milestone, achieve
+func _arp3(freqs: Array, note_dur: float, vol: float) -> AudioStreamWAV:
+	var note_n := int(note_dur * RATE)
+	var n := note_n * freqs.size()
+	var data := PackedByteArray(); data.resize(n * 2)
+	for s_idx in range(freqs.size()):
+		var freq: float = freqs[s_idx]
+		var base := s_idx * note_n
+		for i in range(note_n):
+			var t := float(base + i) / RATE
+			var env := _env(i, note_n, 3.0, note_dur * 550.0, 0.0, 10.0)
+			# Triangle + harmonic
+			var s := (_tri(freq, t) * 0.70 + _sine(freq * 1.5, t) * 0.30) * env * vol
+			data.encode_s16((base + i) * 2, int(clampf(s, -1.0, 1.0) * 32767.0))
+	return _wav(data, false)
+
+## Struck chord — all notes simultaneously, exponential decay
+func _chord(freqs: Array, dur: float, vol: float) -> AudioStreamWAV:
+	var n := int(dur * RATE)
+	var data := PackedByteArray(); data.resize(n * 2)
+	for i in range(n):
+		var t := float(i) / RATE; var frac := float(i) / n
+		var env := pow(1.0 - frac, 1.6) * _env(i, n, 8.0, 0.0, 1.0, dur * 400.0)
+		var mix := 0.0
+		for f in freqs:
+			var fv: float = float(f)
+			mix += _sine(fv, t) * (0.7 + 0.3 * _tri(fv, t))
+		mix /= float(freqs.size())
+		data.encode_s16(i * 2, int(clampf(mix * env * vol, -1.0, 1.0) * 32767.0))
+	return _wav(data, false)
+
+## Filtered noise burst — subtle UI tick
+func _noise(dur: float, vol: float, decay: float) -> AudioStreamWAV:
+	var n := int(dur * RATE)
+	var data := PackedByteArray(); data.resize(n * 2)
+	var prev := 0.0
+	for i in range(n):
+		var env := pow(1.0 - float(i) / n, decay)
+		var raw := randf() * 2.0 - 1.0
+		prev = lerpf(prev, raw, 0.3)  # simple low-pass
+		data.encode_s16(i * 2, int(clampf(prev * env * vol, -1.0, 1.0) * 32767.0))
+	return _wav(data, false)
+
+## Stereo ambient pad — C minor chord with chorus LFO, seamless loop
 func _pad(dur: float) -> AudioStreamWAV:
-	# Soft sustained chord for ambient background; loops seamlessly.
 	var n := int(dur * RATE)
-	var data := PackedByteArray(); data.resize(n * 2)
+	var data := PackedByteArray(); data.resize(n * 4)  # stereo
+	# Chord: C3, Eb3, G3, C4
+	var freqs_l: Array[float] = [130.81, 155.56, 196.00, 261.63]  # C3 Eb3 G3 C4
+	var freqs_r: Array[float] = [130.00, 155.80, 196.60, 262.20]  # slightly detuned (chorus)
+	var amps: Array[float]    = [0.45,   0.30,   0.35,   0.22]
 	for i in range(n):
 		var t := float(i) / RATE
-		var trem := 0.85 + 0.15 * sin(TAU * 0.15 * t)
-		var s := (sin(TAU * 130.81 * t) + 0.6 * sin(TAU * 196.0 * t) + 0.4 * sin(TAU * 261.63 * t)) / 2.0
-		var v := int(clampf(s * 0.5 * trem, -1.0, 1.0) * 32767.0)
-		data.encode_s16(i * 2, v)
-	var st := _wav(data)
-	st.loop_mode = AudioStreamWAV.LOOP_FORWARD
-	st.loop_begin = 0
-	st.loop_end = n - 1
-	return st
-
-func _wav(data: PackedByteArray) -> AudioStreamWAV:
+		# Slow amplitude tremolo + fade-in at loop start
+		var lfo := 0.80 + 0.20 * sin(TAU * 0.13 * t)
+		var fade := clampf(t / 0.4, 0.0, 1.0)   # 400ms fade-in at start
+		var fade_out := clampf((float(n - i) / RATE) / 0.4, 0.0, 1.0)
+		var env := lfo * minf(fade, fade_out)
+		var left := 0.0; var right := 0.0
+		for j in freqs_l.size():
+			left  += _sine(freqs_l[j], t) * amps[j]
+			right += _sine(freqs_r[j], t) * amps[j]
+		# Subtle sub-bass pulse
+		left  += _sine(65.41, t) * 0.12  # C2
+		right += _sine(65.41, t) * 0.12
+		data.encode_s16(i * 4,     int(clampf(left  * env * 0.55, -1.0, 1.0) * 32767.0))
+		data.encode_s16(i * 4 + 2, int(clampf(right * env * 0.55, -1.0, 1.0) * 32767.0))
 	var st := AudioStreamWAV.new()
 	st.format = AudioStreamWAV.FORMAT_16_BITS
-	st.mix_rate = RATE
-	st.stereo = false
-	st.data = data
-	return st
+	st.mix_rate = RATE; st.stereo = true
+	st.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	st.loop_begin = int(0.4 * RATE); st.loop_end = n - int(0.4 * RATE) - 1
+	st.data = data; return st
 
-func to_dict() -> Dictionary:
-	return {"muted": muted}
+func _wav(data: PackedByteArray, stereo: bool) -> AudioStreamWAV:
+	var st := AudioStreamWAV.new()
+	st.format = AudioStreamWAV.FORMAT_16_BITS; st.mix_rate = RATE
+	st.stereo = stereo; st.data = data; return st
 
-func from_dict(d: Dictionary) -> void:
-	muted = bool(d.get("muted", false))
+# ── Persistence ───────────────────────────────────────────────────────────────
+
+func to_dict() -> Dictionary: return {"muted": muted}
+func from_dict(d: Dictionary) -> void: muted = bool(d.get("muted", false))
