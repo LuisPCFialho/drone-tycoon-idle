@@ -2,7 +2,7 @@ extends Node
 ## Procedural SFX — synthesises PCM clips at startup, no audio files needed.
 ## Public API: play(name), tick(), muted, to_dict/from_dict.
 
-const RATE := 44100
+const RATE := 22050
 var muted := false
 var _streams := {}
 var _players: Array[AudioStreamPlayer] = []
@@ -24,23 +24,15 @@ func _ready() -> void:
 		GameState.city_unlocked.connect(func(_i): play("unlock", 1.0, -3.0))
 
 func _build_streams() -> void:
-	# UI
-	_streams["tap"]  = _ping(880.0, 880.0, 0.025, 0.14)
-	_streams["tick"] = _noise(0.028, 0.12, 2.0)
-	# Purchase — rising pitch ping (satisfying click)
-	_streams["buy"]  = _ping(660.0, 1100.0, 0.095, 0.30)
-	# Delivery arrival — soft chime
-	_streams["sell"] = _chime(1046.5, 0.130, 0.22)
-	# City unlocked — 3-note ascending arpeggio
-	_streams["unlock"] = _arp3([523.25, 659.26, 783.99], 0.075, 0.26)
-	# Country change — 4-note triumphant fanfare
-	_streams["milestone"] = _arp3([523.25, 659.26, 783.99, 1046.5], 0.110, 0.28)
-	# Achievement
-	_streams["achieve"] = _arp3([587.33, 739.99, 987.77], 0.090, 0.26)
-	# Prestige / big event — chord strike
-	_streams["prestige"] = _chord([261.63, 329.63, 392.00, 523.25], 0.45, 0.30)
-	# Ambient looping pad (stereo, 8 s)
-	_streams["pad"] = _pad(8.0)
+	_streams["tap"]       = _ping(880.0, 880.0, 0.022, 0.14)
+	_streams["tick"]      = _noise(0.026, 0.12, 2.0)
+	_streams["buy"]       = _ping(620.0, 1040.0, 0.090, 0.28)
+	_streams["sell"]      = _chime(1046.5, 0.120, 0.22)
+	_streams["unlock"]    = _arp3([523.25, 659.26, 783.99], 0.072, 0.25)
+	_streams["milestone"] = _arp3([523.25, 659.26, 783.99, 1046.5], 0.105, 0.27)
+	_streams["achieve"]   = _arp3([587.33, 739.99, 987.77], 0.085, 0.25)
+	_streams["prestige"]  = _chord([261.63, 329.63, 392.00, 523.25], 0.40, 0.28)
+	_streams["pad"]       = _pad(4.0)
 
 func _process(_delta: float) -> void:
 	if _ambient: _ambient.stream_paused = muted
@@ -71,76 +63,74 @@ func _tri(freq: float, t: float) -> float:
 func _sine(freq: float, t: float) -> float:
 	return sin(TAU * freq * t)
 
-# Smooth ADSR envelope
-func _env(i: int, n: int, atk_ms: float, dec_ms: float, sus: float, rel_ms: float) -> float:
-	var atk := int(atk_ms * RATE / 1000.0)
-	var dec := int(dec_ms * RATE / 1000.0)
-	var rel := int(rel_ms * RATE / 1000.0)
-	var rel0 := n - rel
-	if i < atk:     return float(i) / float(max(1, atk))
-	elif i < atk + dec: return lerpf(1.0, sus, float(i - atk) / float(max(1, dec)))
-	elif i < rel0:  return sus
-	else:           return sus * (1.0 - float(i - rel0) / float(max(1, rel)))
+# Smooth decay envelope (fast attack, exponential decay)
+func _dec(i: int, n: int, attack_n: int, decay: float) -> float:
+	if i < attack_n:
+		return float(i) / float(max(1, attack_n))
+	return pow(1.0 - float(i - attack_n) / float(max(1, n - attack_n)), decay)
 
 # ── Sound builders ────────────────────────────────────────────────────────────
 
-## Rising-pitch triangle ping — used for "buy" and "tap"
+## Rising-pitch triangle ping — "buy" and "tap"
 func _ping(f_start: float, f_end: float, dur: float, vol: float) -> AudioStreamWAV:
 	var n := int(dur * RATE)
 	var data := PackedByteArray(); data.resize(n * 2)
+	var atk := int(0.003 * RATE)
 	for i in range(n):
-		var t := float(i) / RATE; var frac := float(i) / n
+		var t := float(i) / RATE
+		var frac := float(i) / n
 		var freq := lerpf(f_start, f_end, pow(frac, 0.5))
-		var env := _env(i, n, 3.0, dur * 600.0, 0.0, 8.0)
-		# Triangle + slight sine harmonic for warmth
-		var s := (_tri(freq, t) * 0.75 + _sine(freq * 2.0, t) * 0.25) * env * vol
+		var env := _dec(i, n, atk, 2.2)
+		var s := _tri(freq, t) * env * vol
 		data.encode_s16(i * 2, int(clampf(s, -1.0, 1.0) * 32767.0))
-	return _wav(data, false)
+	return _wav(data)
 
-## Sine chime with soft attack — used for "sell" (delivery)
+## Sine chime — "sell" (delivery)
 func _chime(freq: float, dur: float, vol: float) -> AudioStreamWAV:
 	var n := int(dur * RATE)
 	var data := PackedByteArray(); data.resize(n * 2)
+	var atk := int(0.004 * RATE)
 	for i in range(n):
 		var t := float(i) / RATE
-		var env := _env(i, n, 4.0, dur * 700.0, 0.0, 15.0)
-		# Fundamental + 2nd harmonic shimmer
+		var env := _dec(i, n, atk, 1.5)
 		var s := (_sine(freq, t) * 0.80 + _sine(freq * 2.0, t) * 0.20) * env * vol
 		data.encode_s16(i * 2, int(clampf(s, -1.0, 1.0) * 32767.0))
-	return _wav(data, false)
+	return _wav(data)
 
-## Ascending note arpeggio (3 or 4 notes) — unlock, milestone, achieve
+## Ascending note arpeggio — unlock, milestone, achieve
 func _arp3(freqs: Array, note_dur: float, vol: float) -> AudioStreamWAV:
 	var note_n := int(note_dur * RATE)
 	var n := note_n * freqs.size()
 	var data := PackedByteArray(); data.resize(n * 2)
+	var atk := int(0.003 * RATE)
 	for s_idx in range(freqs.size()):
 		var freq: float = freqs[s_idx]
 		var base := s_idx * note_n
 		for i in range(note_n):
 			var t := float(base + i) / RATE
-			var env := _env(i, note_n, 3.0, note_dur * 550.0, 0.0, 10.0)
-			# Triangle + harmonic
-			var s := (_tri(freq, t) * 0.70 + _sine(freq * 1.5, t) * 0.30) * env * vol
+			var env := _dec(i, note_n, atk, 1.8)
+			var s := _tri(freq, t) * env * vol
 			data.encode_s16((base + i) * 2, int(clampf(s, -1.0, 1.0) * 32767.0))
-	return _wav(data, false)
+	return _wav(data)
 
-## Struck chord — all notes simultaneously, exponential decay
+## Simultaneous chord strike — prestige
 func _chord(freqs: Array, dur: float, vol: float) -> AudioStreamWAV:
 	var n := int(dur * RATE)
 	var data := PackedByteArray(); data.resize(n * 2)
+	var atk := int(0.008 * RATE)
+	var sz := freqs.size()
 	for i in range(n):
-		var t := float(i) / RATE; var frac := float(i) / n
-		var env := pow(1.0 - frac, 1.6) * _env(i, n, 8.0, 0.0, 1.0, dur * 400.0)
+		var t := float(i) / RATE
+		var env := _dec(i, n, atk, 1.6)
 		var mix := 0.0
 		for f in freqs:
 			var fv: float = float(f)
-			mix += _sine(fv, t) * (0.7 + 0.3 * _tri(fv, t))
-		mix /= float(freqs.size())
+			mix += _sine(fv, t)
+		mix /= float(sz)
 		data.encode_s16(i * 2, int(clampf(mix * env * vol, -1.0, 1.0) * 32767.0))
-	return _wav(data, false)
+	return _wav(data)
 
-## Filtered noise burst — subtle UI tick
+## Filtered noise burst — tick
 func _noise(dur: float, vol: float, decay: float) -> AudioStreamWAV:
 	var n := int(dur * RATE)
 	var data := PackedByteArray(); data.resize(n * 2)
@@ -148,45 +138,29 @@ func _noise(dur: float, vol: float, decay: float) -> AudioStreamWAV:
 	for i in range(n):
 		var env := pow(1.0 - float(i) / n, decay)
 		var raw := randf() * 2.0 - 1.0
-		prev = lerpf(prev, raw, 0.3)  # simple low-pass
+		prev = lerpf(prev, raw, 0.3)
 		data.encode_s16(i * 2, int(clampf(prev * env * vol, -1.0, 1.0) * 32767.0))
-	return _wav(data, false)
+	return _wav(data)
 
-## Stereo ambient pad — C minor chord with chorus LFO, seamless loop
+## Ambient looping pad — C minor chord, mono, 4 s
 func _pad(dur: float) -> AudioStreamWAV:
 	var n := int(dur * RATE)
-	var data := PackedByteArray(); data.resize(n * 4)  # stereo
-	# Chord: C3, Eb3, G3, C4
-	var freqs_l: Array[float] = [130.81, 155.56, 196.00, 261.63]  # C3 Eb3 G3 C4
-	var freqs_r: Array[float] = [130.00, 155.80, 196.60, 262.20]  # slightly detuned (chorus)
-	var amps: Array[float]    = [0.45,   0.30,   0.35,   0.22]
+	var data := PackedByteArray(); data.resize(n * 2)
 	for i in range(n):
 		var t := float(i) / RATE
-		# Slow amplitude tremolo + fade-in at loop start
-		var lfo := 0.80 + 0.20 * sin(TAU * 0.13 * t)
-		var fade := clampf(t / 0.4, 0.0, 1.0)   # 400ms fade-in at start
-		var fade_out := clampf((float(n - i) / RATE) / 0.4, 0.0, 1.0)
-		var env := lfo * minf(fade, fade_out)
-		var left := 0.0; var right := 0.0
-		for j in freqs_l.size():
-			left  += _sine(freqs_l[j], t) * amps[j]
-			right += _sine(freqs_r[j], t) * amps[j]
-		# Subtle sub-bass pulse
-		left  += _sine(65.41, t) * 0.12  # C2
-		right += _sine(65.41, t) * 0.12
-		data.encode_s16(i * 4,     int(clampf(left  * env * 0.55, -1.0, 1.0) * 32767.0))
-		data.encode_s16(i * 4 + 2, int(clampf(right * env * 0.55, -1.0, 1.0) * 32767.0))
-	var st := AudioStreamWAV.new()
-	st.format = AudioStreamWAV.FORMAT_16_BITS
-	st.mix_rate = RATE; st.stereo = true
+		var lfo := 0.82 + 0.18 * sin(TAU * 0.14 * t)
+		# C3 + Eb3 + G3 (C minor triad) — 3 sin calls per sample
+		var s := (sin(TAU * 130.81 * t) + 0.55 * sin(TAU * 155.56 * t) + 0.45 * sin(TAU * 196.00 * t)) / 2.0
+		data.encode_s16(i * 2, int(clampf(s * lfo * 0.52, -1.0, 1.0) * 32767.0))
+	var st := _wav(data)
 	st.loop_mode = AudioStreamWAV.LOOP_FORWARD
-	st.loop_begin = int(0.4 * RATE); st.loop_end = n - int(0.4 * RATE) - 1
-	st.data = data; return st
+	st.loop_begin = 0; st.loop_end = n - 1
+	return st
 
-func _wav(data: PackedByteArray, stereo: bool) -> AudioStreamWAV:
+func _wav(data: PackedByteArray) -> AudioStreamWAV:
 	var st := AudioStreamWAV.new()
 	st.format = AudioStreamWAV.FORMAT_16_BITS; st.mix_rate = RATE
-	st.stereo = stereo; st.data = data; return st
+	st.stereo = false; st.data = data; return st
 
 # ── Persistence ───────────────────────────────────────────────────────────────
 
