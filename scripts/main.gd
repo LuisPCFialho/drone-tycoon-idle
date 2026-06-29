@@ -1,22 +1,17 @@
 extends Control
 ## Main scene — Drone Tycoon: Sky Fleet
 
-const NAV_H    := 86.0
-const CONTENT_H := 460.0
-const BOTTOM_H := NAV_H + CONTENT_H   # 546
-const AD_H     := 62.0
-const ART      := "res://assets/art/"
+const NAV_H  := 86.0
+const TABS_H := 460.0
+const AD_H   := 62.0
+const ART    := "res://assets/art/"
 
 var _map: MapView
 var _hud: PanelContainer
 var _adbar: HBoxContainer
-var _bottom_panel: Panel
-var _page_host: Control
-var _pages: Array
+var _tabs: TabContainer
+var _nav_bar: HBoxContainer
 var _nav_btns: Array
-var _nav_icons: Array
-var _nav_labels: Array
-var _active_tab := 0
 var _toasts: VBoxContainer
 
 var _credits_lbl: Label
@@ -46,7 +41,7 @@ func _ready() -> void:
 		DisplayServer.screen_set_orientation(DisplayServer.SCREEN_PORTRAIT)
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	theme = UITheme.build()
-	_bg(); _build_map(); _build_hud(); _build_adbar(); _build_bottom(); _build_toasts()
+	_bg(); _build_map(); _build_hud(); _build_adbar(); _build_tabs(); _build_nav(); _build_toasts()
 	GameState.city_unlocked.connect(func(_i): _toast("Cidade desbloqueada!", UITheme.CYAN))
 	GameState.country_changed.connect(func(i): _toast("Bem-vindo a " + Economy.country_name(i) + "!", UITheme.GOLD))
 	var loaded := SaveSystem.load_game()
@@ -66,17 +61,16 @@ func _bg() -> void:
 func _build_map() -> void:
 	_map = MapView.new(); _map.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); add_child(_map)
 
-# ── HUD (glassmorphic overlay on the map) ────────────────────────────────────
+# ── HUD (glassmorphic overlay) ────────────────────────────────────────────────
 
 func _build_hud() -> void:
 	_hud = PanelContainer.new()
-	_hud.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	_hud.anchor_left = 0; _hud.anchor_right = 1; _hud.anchor_top = 0; _hud.anchor_bottom = 0
 	_hud.offset_left = 10; _hud.offset_right = -10; _hud.offset_top = 10
 	_hud.add_theme_stylebox_override("panel", UITheme.glass())
 	add_child(_hud)
 	var v := VBoxContainer.new(); v.add_theme_constant_override("separation", 8); _hud.add_child(v)
 
-	# Row 1: currency chips + settings
 	var r1 := HBoxContainer.new(); r1.add_theme_constant_override("separation", 8); v.add_child(r1)
 	var c1 := _stat_chip("ic_credits", UITheme.GOLD); _credits_lbl = c1["label"]; r1.add_child(c1["root"])
 	var c2 := _stat_chip("ic_gems",    UITheme.CYAN);  _gems_lbl  = c2["label"]; r1.add_child(c2["root"])
@@ -85,33 +79,36 @@ func _build_hud() -> void:
 	var vl := _lbl("VIP", 16, Color(0.12, 0.08, 0.0)); vl.add_theme_font_override("font", UITheme.font("Bold"))
 	_vip_badge.add_child(vl); _vip_badge.visible = false; r1.add_child(_vip_badge)
 	var sp := Control.new(); sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL; r1.add_child(sp)
-	var gear := Button.new(); gear.custom_minimum_size = Vector2(48, 48)
-	gear.add_theme_stylebox_override("normal", UITheme.nav_item(false))
-	gear.add_theme_stylebox_override("hover",  UITheme.nav_item(true))
-	gear.add_theme_stylebox_override("focus",  StyleBoxEmpty.new())
-	gear.add_child(_icon("ic_gear", 24)); gear.pressed.connect(_show_settings); r1.add_child(gear)
+	var gear := Button.new(); gear.text = ""; gear.custom_minimum_size = Vector2(48, 48)
+	gear.add_theme_stylebox_override("normal",  UITheme.nav_item(false))
+	gear.add_theme_stylebox_override("hover",   UITheme.nav_item(true))
+	gear.add_theme_stylebox_override("focus",   StyleBoxEmpty.new())
+	gear.icon = _tex("ic_gear"); gear.add_theme_constant_override("icon_max_width", 26)
+	gear.pressed.connect(_show_settings); r1.add_child(gear)
 
-	# Row 2: country + income
 	var r2 := HBoxContainer.new(); r2.add_theme_constant_override("separation", 6); v.add_child(r2)
 	_country_lbl = _lbl("", 17, UITheme.MUTED); _country_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL; r2.add_child(_country_lbl)
-	_income_lbl = _lbl("≈ +0/s", 19, UITheme.GREEN); _income_lbl.add_theme_font_override("font", UITheme.font("Bold"))
+	_income_lbl = _lbl("≈ +0/s", 19, UITheme.GREEN)
+	_income_lbl.add_theme_font_override("font", UITheme.font("Bold"))
 	_income_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT; r2.add_child(_income_lbl)
 
 func _stat_chip(icon: String, color: Color) -> Dictionary:
 	var pc := PanelContainer.new()
-	var s := StyleBoxFlat.new(); s.bg_color = Color(color.r, color.g, color.b, 0.18); s.set_corner_radius_all(18); s.set_content_margin_all(8)
+	var s := StyleBoxFlat.new(); s.bg_color = Color(color.r, color.g, color.b, 0.18)
+	s.set_corner_radius_all(18); s.set_content_margin_all(8)
 	pc.add_theme_stylebox_override("panel", s)
 	var h := HBoxContainer.new(); h.add_theme_constant_override("separation", 5); pc.add_child(h)
 	h.add_child(_icon(icon, 22))
 	var lbl := _lbl("0", 19, color); lbl.add_theme_font_override("font", UITheme.font("Bold")); h.add_child(lbl)
 	return {"root": pc, "label": lbl}
 
-# ── Ad / rewarded buttons bar ─────────────────────────────────────────────────
+# ── Ad / rewarded pill bar ────────────────────────────────────────────────────
 
 func _build_adbar() -> void:
 	_adbar = HBoxContainer.new()
-	_adbar.anchor_left = 0; _adbar.anchor_right = 1; _adbar.anchor_top = 1; _adbar.anchor_bottom = 1
-	_adbar.offset_top = -(BOTTOM_H + AD_H); _adbar.offset_bottom = -BOTTOM_H
+	_adbar.anchor_left = 0; _adbar.anchor_right = 1
+	_adbar.anchor_top = 1; _adbar.anchor_bottom = 1
+	_adbar.offset_top = -(NAV_H + TABS_H + AD_H); _adbar.offset_bottom = -(NAV_H + TABS_H)
 	_adbar.offset_left = 10; _adbar.offset_right = -10
 	_adbar.add_theme_constant_override("separation", 8)
 	add_child(_adbar)
@@ -132,86 +129,74 @@ func _ad_pill(icon: String, text: String, cb: Callable) -> Button:
 	b.icon = _tex(icon); b.add_theme_constant_override("icon_max_width", 22)
 	b.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT; b.pressed.connect(cb); return b
 
-# ── Bottom panel (content pages + nav bar) ────────────────────────────────────
+# ── Tab pages (TabContainer with hidden native tab bar) ───────────────────────
 
-func _build_bottom() -> void:
-	_bottom_panel = Panel.new()
-	_bottom_panel.anchor_left = 0; _bottom_panel.anchor_right = 1
-	_bottom_panel.anchor_top  = 1; _bottom_panel.anchor_bottom = 1
-	_bottom_panel.offset_top = -BOTTOM_H; _bottom_panel.offset_bottom = 0
-	_bottom_panel.add_theme_stylebox_override("panel", UITheme.bottom_panel())
-	add_child(_bottom_panel)
+func _build_tabs() -> void:
+	_tabs = TabContainer.new()
+	_tabs.anchor_left = 0; _tabs.anchor_right = 1
+	_tabs.anchor_top = 1; _tabs.anchor_bottom = 1
+	_tabs.offset_top = -(NAV_H + TABS_H); _tabs.offset_bottom = -NAV_H
+	_tabs.add_theme_stylebox_override("panel", UITheme.bottom_panel())
+	add_child(_tabs)
+	# Hide the built-in tab header — we drive switching via our own nav bar
+	_tabs.get_tab_bar().visible = false
+	_tabs.get_tab_bar().custom_minimum_size = Vector2(0, 0)
 
-	var layout := VBoxContainer.new()
-	layout.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	layout.add_theme_constant_override("separation", 0)
-	_bottom_panel.add_child(layout)
+	_build_fleet_tab()
+	_build_cities_tab()
+	_build_talents_tab()
+	_build_shop_tab()
 
-	# Page host (fills remaining space above the nav)
-	_page_host = Control.new()
-	_page_host.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_page_host.size_flags_vertical   = Control.SIZE_EXPAND_FILL
-	layout.add_child(_page_host)
+# ── Custom nav bar ────────────────────────────────────────────────────────────
 
-	# Build the 4 pages and put them in the host
-	_pages = [_build_fleet_tab(), _build_cities_tab(), _build_talents_tab(), _build_shop_tab()]
-	for pg in _pages:
-		pg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		_page_host.add_child(pg)
-
-	# Thin separator before nav
+func _build_nav() -> void:
+	# Thin separator above nav
 	var sep := ColorRect.new(); sep.color = UITheme.BORDER
-	sep.custom_minimum_size = Vector2(0, 1); layout.add_child(sep)
+	sep.anchor_left = 0; sep.anchor_right = 1; sep.anchor_top = 1; sep.anchor_bottom = 1
+	sep.offset_top = -NAV_H - 1; sep.offset_bottom = -NAV_H
+	add_child(sep)
 
-	# Nav row
-	var nav := HBoxContainer.new()
-	nav.custom_minimum_size = Vector2(0, NAV_H)
-	nav.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	nav.add_theme_constant_override("separation", 0)
-	layout.add_child(nav)
+	_nav_bar = HBoxContainer.new()
+	_nav_bar.anchor_left = 0; _nav_bar.anchor_right = 1
+	_nav_bar.anchor_top = 1; _nav_bar.anchor_bottom = 1
+	_nav_bar.offset_top = -NAV_H; _nav_bar.offset_bottom = 0
+	_nav_bar.add_theme_constant_override("separation", 0)
+	var bg_style := StyleBoxFlat.new(); bg_style.bg_color = Color(0.09, 0.12, 0.22)
+	_nav_bar.add_theme_stylebox_override("panel", bg_style)
+	add_child(_nav_bar)
 
 	var tab_defs := [["ic_drone","Frota"],["ic_range","Cidades"],["ic_prestige","Talentos"],["ic_gems","Loja"]]
 	for i in tab_defs.size():
-		nav.add_child(_nav_item(tab_defs[i][0], tab_defs[i][1], i))
+		_nav_bar.add_child(_make_nav_btn(tab_defs[i][0], tab_defs[i][1], i))
 
-func _nav_item(icon_name: String, label_text: String, idx: int) -> Button:
-	var btn := Button.new()
+func _make_nav_btn(icon_name: String, label_text: String, idx: int) -> Button:
+	var btn := Button.new(); btn.text = ""
 	btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	btn.custom_minimum_size = Vector2(0, NAV_H)
-	btn.text = ""
 	btn.add_theme_stylebox_override("normal",  UITheme.nav_item(false))
 	btn.add_theme_stylebox_override("hover",   UITheme.nav_item(false))
 	btn.add_theme_stylebox_override("pressed", UITheme.nav_item(true))
 	btn.add_theme_stylebox_override("focus",   StyleBoxEmpty.new())
-	var v := VBoxContainer.new(); v.alignment = BoxContainer.ALIGNMENT_CENTER
-	v.add_theme_constant_override("separation", 4)
-	v.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	btn.add_child(v)
-	var ic := _icon(icon_name, 28); ic.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	v.add_child(ic); _nav_icons.append(ic)
-	var lbl := Label.new(); lbl.text = label_text; lbl.add_theme_font_size_override("font_size", 15)
-	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	lbl.add_theme_color_override("font_color", UITheme.MUTED)
-	v.add_child(lbl); _nav_labels.append(lbl)
+	btn.icon = _tex(icon_name); btn.add_theme_constant_override("icon_max_width", 30)
+	btn.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_nav_btns.append(btn)
+	btn.text = label_text; btn.add_theme_font_size_override("font_size", 15)
+	btn.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
 	btn.pressed.connect(func(): _switch_tab(idx))
 	return btn
 
 func _switch_tab(i: int) -> void:
-	_active_tab = i
-	for j in _pages.size():
-		_pages[j].visible = (j == i)
+	_tabs.current_tab = i
 	for j in _nav_btns.size():
 		var active := (j == i)
 		_nav_btns[j].add_theme_stylebox_override("normal", UITheme.nav_item(active))
 		_nav_btns[j].add_theme_stylebox_override("hover",  UITheme.nav_item(active))
-		_nav_icons[j].modulate  = UITheme.ACCENT if active else UITheme.MUTED
-		_nav_labels[j].add_theme_color_override("font_color", UITheme.INK if active else UITheme.MUTED)
+		_nav_btns[j].modulate = UITheme.ACCENT if active else Color.WHITE
 
-# ── Scroll wrapper with padding ───────────────────────────────────────────────
+# ── Scroll page wrapper ───────────────────────────────────────────────────────
 
-func _scroll() -> Array:
-	var sc := ScrollContainer.new()
+func _scroll(title: String) -> Array:
+	var sc := ScrollContainer.new(); sc.name = title
 	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	var margin := MarginContainer.new(); margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	for side in ["margin_left","margin_right","margin_top","margin_bottom"]:
@@ -221,21 +206,23 @@ func _scroll() -> Array:
 	margin.add_child(v); sc.add_child(margin)
 	return [sc, v]
 
-# ── Tab pages ─────────────────────────────────────────────────────────────────
+# ── Tab content ───────────────────────────────────────────────────────────────
 
-func _build_fleet_tab() -> ScrollContainer:
-	var r := _scroll(); var v: VBoxContainer = r[1]
+func _build_fleet_tab() -> void:
+	var r := _scroll("Frota"); var v: VBoxContainer = r[1]; _tabs.add_child(r[0])
 
 	# Segmented buy-mode selector
 	var seg_row := HBoxContainer.new(); seg_row.add_theme_constant_override("separation", 6); v.add_child(seg_row)
 	for m in [[1,"×1"],[10,"×10"],[100,"×100"],[-1,"Máx"]]:
-		var b := Button.new(); b.text = m[1]; b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var mode_val: int = m[0]; var mode_lbl: String = m[1]
+		var b := Button.new(); b.text = mode_lbl; b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		b.custom_minimum_size = Vector2(0, 52); b.add_theme_font_size_override("font_size", 20)
 		b.add_theme_stylebox_override("normal",  UITheme.seg(false))
 		b.add_theme_stylebox_override("hover",   UITheme.seg(false))
 		b.add_theme_stylebox_override("pressed", UITheme.seg(true))
 		b.add_theme_stylebox_override("focus",   StyleBoxEmpty.new())
-		b.pressed.connect(func(): GameState.buy_mode = m[0]); seg_row.add_child(b); _mode_btns[m[0]] = b
+		b.pressed.connect(func(): GameState.buy_mode = mode_val)
+		seg_row.add_child(b); _mode_btns[mode_val] = b
 
 	# Drone card
 	var dp := _card(UITheme.ACCENT); var dv := VBoxContainer.new(); dv.add_theme_constant_override("separation", 12); dp.add_child(dv)
@@ -250,43 +237,40 @@ func _build_fleet_tab() -> ScrollContainer:
 
 	for key in ["speed", "cargo", "value"]:
 		v.add_child(_make_upgrade_row(key))
-	return r[0]
 
-func _build_cities_tab() -> ScrollContainer:
-	var r := _scroll(); var v: VBoxContainer = r[1]
+func _build_cities_tab() -> void:
+	var r := _scroll("Cidades"); var v: VBoxContainer = r[1]; _tabs.add_child(r[0])
 	_progress_lbl = _lbl("", 19, UITheme.MUTED); _progress_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; v.add_child(_progress_lbl)
 
-	# Unlock city
 	var cp := _card(UITheme.CYAN); var cv := VBoxContainer.new(); cv.add_theme_constant_override("separation", 12); cp.add_child(cv)
 	var ch := HBoxContainer.new(); ch.add_theme_constant_override("separation", 12); cv.add_child(ch)
 	ch.add_child(_icon("ic_range", 42))
 	var cl := VBoxContainer.new(); cl.size_flags_horizontal = Control.SIZE_EXPAND_FILL; ch.add_child(cl)
 	cl.add_child(_lbl("Abrir Cidade", 24, UITheme.INK))
 	_city_detail = _lbl("", 18, UITheme.MUTED); _city_detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; cl.add_child(_city_detail)
-	_city_btn = _wide_btn(UITheme.CYAN.darkened(0.10)); _city_btn.pressed.connect(func(): if GameState.unlock_city(): _pulse(_city_btn); Audio.play("buy"))
+	_city_btn = _wide_btn(UITheme.CYAN.darkened(0.10))
+	_city_btn.pressed.connect(func(): if GameState.unlock_city(): _pulse(_city_btn); Audio.play("buy"))
 	cv.add_child(_city_btn); v.add_child(cp)
 
-	# Expand country
 	var ep := _card(UITheme.GOLD); var ev := VBoxContainer.new(); ev.add_theme_constant_override("separation", 12); ep.add_child(ev)
 	var eh := HBoxContainer.new(); eh.add_theme_constant_override("separation", 12); ev.add_child(eh)
 	eh.add_child(_icon("ic_boost", 42))
 	var el := VBoxContainer.new(); el.size_flags_horizontal = Control.SIZE_EXPAND_FILL; eh.add_child(el)
 	el.add_child(_lbl("Expandir para o próximo país", 23, UITheme.INK))
 	_expand_detail = _lbl("", 18, UITheme.MUTED); _expand_detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; el.add_child(_expand_detail)
-	_expand_btn = _wide_btn(UITheme.GOLD.darkened(0.08)); _expand_btn.pressed.connect(func(): if GameState.expand_country(): _pulse(_expand_btn); Audio.play("buy"))
+	_expand_btn = _wide_btn(UITheme.GOLD.darkened(0.08))
+	_expand_btn.pressed.connect(func(): if GameState.expand_country(): _pulse(_expand_btn); Audio.play("buy"))
 	ev.add_child(_expand_btn); v.add_child(ep)
-	return r[0]
 
-func _build_talents_tab() -> ScrollContainer:
-	var r := _scroll(); var v: VBoxContainer = r[1]
+func _build_talents_tab() -> void:
+	var r := _scroll("Talentos"); var v: VBoxContainer = r[1]; _tabs.add_child(r[0])
 	var info := _lbl("Influência ganha-se ao expandir países.\nGasta-a em bónus PERMANENTES.", 18, UITheme.MUTED)
 	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; v.add_child(info)
 	for key in Economy.TALENT_ORDER:
 		v.add_child(_make_talent_row(key))
-	return r[0]
 
-func _build_shop_tab() -> ScrollContainer:
-	var r := _scroll(); var v: VBoxContainer = r[1]
+func _build_shop_tab() -> void:
+	var r := _scroll("Loja"); var v: VBoxContainer = r[1]; _tabs.add_child(r[0])
 	var gi := _card(UITheme.CYAN); var gv := VBoxContainer.new(); gv.add_theme_constant_override("separation", 6); gi.add_child(gv)
 	gv.add_child(_lbl("💎 Gemas", 21, UITheme.CYAN))
 	var gd := _lbl("Ganha Gemas vendo anúncios (botão acima).\nUsa-as para comprar bónus poderosos:", 17, UITheme.MUTED)
@@ -295,7 +279,6 @@ func _build_shop_tab() -> ScrollContainer:
 	v.add_child(_lbl("Comprar com dinheiro real", 20, UITheme.GOLD))
 	for id in Billing.PRODUCT_ORDER: v.add_child(_make_iap_row(id))
 	v.add_child(_lbl("Demonstração (sem pagamento real).", 14, UITheme.MUTED))
-	return r[0]
 
 # ── Card widgets ──────────────────────────────────────────────────────────────
 
@@ -309,8 +292,7 @@ func _wide_btn(color: Color) -> Button:
 	b.add_theme_stylebox_override("hover",    UITheme.action_btn(color.lightened(0.10)))
 	b.add_theme_stylebox_override("pressed",  UITheme.action_btn(color.darkened(0.12)))
 	b.add_theme_stylebox_override("disabled", UITheme.action_btn_disabled())
-	b.add_theme_stylebox_override("focus",    StyleBoxEmpty.new())
-	return b
+	b.add_theme_stylebox_override("focus",    StyleBoxEmpty.new()); return b
 
 func _make_upgrade_row(key: String) -> PanelContainer:
 	var accent_map: Dictionary = {"speed": UITheme.ACCENT, "cargo": UITheme.GOLD, "value": UITheme.GREEN}
@@ -378,8 +360,9 @@ func _build_toasts() -> void:
 # ── Per-frame update ──────────────────────────────────────────────────────────
 
 func _process(delta: float) -> void:
-	_disp_credits = lerp(_disp_credits, GameState.credits, clamp(delta * 8.0, 0.0, 1.0))
-	if abs(_disp_credits - GameState.credits) < 1.0: _disp_credits = GameState.credits
+	_disp_credits = lerpf(_disp_credits, GameState.credits, clampf(delta * 8.0, 0.0, 1.0))
+	if abs(_disp_credits - GameState.credits) < 1.0:
+		_disp_credits = GameState.credits
 	_credits_lbl.text = Fmt.short(_disp_credits)
 	_gems_lbl.text = str(GameState.gems); _infl_lbl.text = str(GameState.influence)
 	_income_lbl.text = "≈ +" + Fmt.short(GameState.income_per_sec()) + "/s"
@@ -393,7 +376,7 @@ func _process(delta: float) -> void:
 	_map.band_bottom = _adbar.position.y - 6.0
 
 	for m in _mode_btns:
-		var active := GameState.buy_mode == m
+		var active: bool = (GameState.buy_mode == int(m))
 		_mode_btns[m].add_theme_stylebox_override("normal", UITheme.seg(active))
 		_mode_btns[m].add_theme_stylebox_override("hover",  UITheme.seg(active))
 
@@ -410,30 +393,44 @@ func _process(delta: float) -> void:
 		row["detail"].text = "Nv %d · %s" % [int(GameState.levels[key]), _effect(key)]
 
 	for key in _talent_rows:
-		var tp: Dictionary = Economy.TALENTS[key]; var lvl := int(GameState.talents[key]); var tr: Dictionary = _talent_rows[key]
-		if lvl >= int(tp["max"]): tr["btn"].text = "MÁX"; tr["btn"].disabled = true
-		else: tr["btn"].text = str(GameState.talent_cost(key)); tr["btn"].disabled = not GameState.can_buy_talent(key)
+		var tp: Dictionary = Economy.TALENTS[key]; var lvl := int(GameState.talents[key])
+		var tr: Dictionary = _talent_rows[key]
+		if lvl >= int(tp["max"]):
+			tr["btn"].text = "MÁX"; tr["btn"].disabled = true
+		else:
+			tr["btn"].text = str(GameState.talent_cost(key)); tr["btn"].disabled = not GameState.can_buy_talent(key)
 		tr["detail"].text = "Nv %d/%d · %s" % [lvl, int(tp["max"]), tp["desc"]]
 
 	var gb: Dictionary = _gem_rows.get("boost", {})
-	if not gb.is_empty(): gb["btn"].text = str(GameState.gem_boost_cost()); gb["btn"].disabled = GameState.gems < GameState.gem_boost_cost()
-	for id in ["cash","warp"]:
+	if not gb.is_empty():
+		var boost_cost := GameState.gem_boost_cost()
+		gb["btn"].text = str(boost_cost); gb["btn"].disabled = GameState.gems < boost_cost
+	for id in ["cash", "warp"]:
 		var gr: Dictionary = _gem_rows.get(id, {})
 		if not gr.is_empty():
-			var c: int = int(Economy.GEM_SHOP[id]["cost"]); gr["btn"].text = str(c); gr["btn"].disabled = GameState.gems < c
+			var c: int = int(Economy.GEM_SHOP[id]["cost"])
+			gr["btn"].text = str(c); gr["btn"].disabled = GameState.gems < c
 
-	_progress_lbl.text = "%s — cidades abertas %d de %d. Abre todas para poder expandir." % [Economy.country_name(GameState.current_country), GameState.cities_unlocked, GameState.max_cities()]
+	_progress_lbl.text = "%s — cidades abertas %d de %d." % [Economy.country_name(GameState.current_country), GameState.cities_unlocked, GameState.max_cities()]
 	var cc := GameState.next_city_cost()
-	if cc < 0.0: _city_btn.disabled = true; _city_btn.text = "TODAS"; _city_detail.text = "Todas as cidades estão abertas."
+	if cc < 0.0:
+		_city_btn.disabled = true
+		_city_btn.text = "TODAS"
+		_city_detail.text = "Todas as cidades estão abertas."
 	else:
 		_city_btn.text = Fmt.short(cc); _city_btn.disabled = GameState.credits < cc
 		var ci := GameState.current_country; var cities := Economy.country_cities(ci)
 		var nx: int = clampi(GameState.cities_unlocked + 1, 1, cities.size() - 1)
 		_city_detail.text = "Próxima: %s" % cities[nx]["name"]
 	var ec := GameState.expand_cost()
-	if ec < 0.0: _expand_btn.disabled = true; _expand_btn.text = "FIM"; _expand_detail.text = "Chegaste ao último país. Parabéns!"
+	if ec < 0.0:
+		_expand_btn.disabled = true
+		_expand_btn.text = "FIM"
+		_expand_detail.text = "Chegaste ao último país. Parabéns!"
 	elif not GameState.all_cities_unlocked():
-		_expand_btn.disabled = true; _expand_btn.text = "🔒"; _expand_detail.text = "Abre todas as cidades de %s primeiro." % Economy.country_name(GameState.current_country)
+		_expand_btn.disabled = true
+		_expand_btn.text = "🔒"
+		_expand_detail.text = "Abre todas as cidades de %s primeiro." % Economy.country_name(GameState.current_country)
 	else:
 		_expand_btn.text = Fmt.short(ec); _expand_btn.disabled = GameState.credits < ec
 		_expand_detail.text = "Seguinte: %s  (+Influência)" % Economy.country_name(GameState.current_country + 1)
@@ -493,14 +490,13 @@ func _overlay() -> CanvasLayer:
 	layer.add_child(dim); add_child(layer); return layer
 
 func _popup_box(layer: CanvasLayer) -> VBoxContainer:
-	# Use a full-screen Control so CenterContainer has a known parent size
 	var wrap := Control.new(); wrap.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); layer.add_child(wrap)
 	var center := CenterContainer.new(); center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); wrap.add_child(center)
 	var pc := PanelContainer.new(); pc.custom_minimum_size = Vector2(520, 0); center.add_child(pc)
 	var box := VBoxContainer.new(); box.add_theme_constant_override("separation", 18); pc.add_child(box)
 	return box
 
-# ── Primitive helpers ─────────────────────────────────────────────────────────
+# ── Primitives ────────────────────────────────────────────────────────────────
 
 func _lbl(text: String, font_size: int, color: Color) -> Label:
 	var l := Label.new(); l.text = text
