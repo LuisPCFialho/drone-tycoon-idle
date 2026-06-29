@@ -26,7 +26,7 @@ func _auto_buy() -> void:
 	# costs no more than ~5x the cheapest upgrade (a sensible-investment heuristic).
 	var best := ""
 	var best_cost := INF
-	var dcost := Economy.drone_cost(GameState.drones)
+	var dcost := GameState.drone_cost()
 	if dcost < best_cost: best = "drone"; best_cost = dcost
 	for k in Economy.UPGRADE_ORDER:
 		var c := Economy.upgrade_cost(k, int(GameState.levels[k]))
@@ -35,7 +35,7 @@ func _auto_buy() -> void:
 	if hc >= 0.0 and GameState.credits >= hc and hc <= best_cost * 6.0:
 		GameState.unlock_hub(); return
 	if best != "" and GameState.credits >= best_cost:
-		if best == "drone": GameState.buy_drone()
+		if best == "drone": GameState.buy_drones()
 		else: GameState.buy_upgrade_multi(best)
 
 func _report(t: float) -> void:

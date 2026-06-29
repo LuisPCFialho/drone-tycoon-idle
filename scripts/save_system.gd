@@ -44,7 +44,7 @@ func load_game() -> bool:
 	var ts := int(data.get("ts", 0))
 	var now := int(Time.get_unix_time_from_system())
 	var elapsed: float = float(max(0, now - ts))
-	GameState.pending_offline_seconds = min(elapsed, GameState.OFFLINE_CAP)
+	GameState.pending_offline_seconds = min(elapsed, GameState.offline_cap())
 	GameState.pending_offline = GameState.income_per_sec() * GameState.pending_offline_seconds * GameState.OFFLINE_EFF
 	return true
 

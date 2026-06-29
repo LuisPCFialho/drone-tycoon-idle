@@ -1,8 +1,8 @@
 extends Node
-## Economy data & formulas (autoload: Economy) for the drone delivery tycoon.
+## Economy data & formulas (autoload: Economy). Tuned for a LONG idle curve:
+## income scales mainly with drone count (exponential cost), modest multipliers,
+## milestone x2 every 25 drones, expensive city unlocks, and a prestige talent tree.
 
-# Hub network. pos is normalized inside the map area (x:0..1, y:0..1, y=0 at top).
-# index 0 is the home base; the rest are delivery cities unlocked over time.
 const HUBS := [
 	{"name": "Base", "pos": Vector2(0.50, 0.92)},
 	{"name": "Vila Norte", "pos": Vector2(0.24, 0.74)},
@@ -14,14 +14,25 @@ const HUBS := [
 	{"name": "Pico", "pos": Vector2(0.46, 0.10)},
 ]
 
+# Fleet upgrades — cost growth deliberately steep so income can't run away.
 const UPGRADES := {
-	# Cost growth deliberately exceeds benefit growth so no upgrade self-funds
-	# (prevents runaway/overflow): speed +12%/lvl, value +15%/lvl, cargo +1 flat/lvl.
-	"speed": {"name": "Velocidade dos Drones", "base": 40.0, "rate": 1.22},
-	"cargo": {"name": "Capacidade de Carga", "base": 55.0, "rate": 1.18},
-	"value": {"name": "Valor da Encomenda", "base": 70.0, "rate": 1.25},
+	"speed": {"name": "Velocidade dos Drones", "base": 100.0, "rate": 1.20, "icon": "ic_speed"},
+	"cargo": {"name": "Capacidade de Carga", "base": 150.0, "rate": 1.22, "icon": "ic_cargo"},
+	"value": {"name": "Valor da Encomenda", "base": 220.0, "rate": 1.25, "icon": "ic_value"},
 }
 const UPGRADE_ORDER := ["speed", "cargo", "value"]
+
+# Prestige talents — bought with Influência (permanent).
+const TALENTS := {
+	"global":  {"name": "Comando Central", "desc": "+12% lucros globais", "max": 100, "icon": "ic_prestige"},
+	"speed":   {"name": "Rotores Turbo", "desc": "+8% velocidade", "max": 60, "icon": "ic_speed"},
+	"value":   {"name": "Rotas Premium", "desc": "+8% valor da encomenda", "max": 60, "icon": "ic_value"},
+	"hangar":  {"name": "Hangar Eficiente", "desc": "-2% custo de drones", "max": 25, "icon": "ic_drone"},
+	"offline": {"name": "IA Logística", "desc": "+30 min de tempo offline", "max": 12, "icon": "ic_boost"},
+}
+const TALENT_ORDER := ["global", "speed", "value", "hangar", "offline"]
+
+const MILESTONE_STEP := 50   # every 50 drones -> x2 income
 
 func num_hubs() -> int:
 	return HUBS.size()
@@ -40,8 +51,11 @@ func upgrade_cost(key: String, level: int) -> float:
 	return u["base"] * pow(u["rate"], float(level))
 
 func drone_cost(count: int) -> float:
-	return 60.0 * pow(1.20, float(max(0, count - 1)))
+	return 12.0 * pow(1.13, float(max(0, count - 1)))
 
 func hub_unlock_cost(next_index: int) -> float:
-	# Cost to unlock the city at HUBS[next_index].
-	return 600.0 * pow(7.5, float(max(0, next_index - 1)))
+	# First city is cheap (early win ~2-3 min); each next is ~11x — spans prestiges.
+	return 300.0 * pow(11.0, float(max(0, next_index - 1)))
+
+func talent_cost(level: int) -> int:
+	return int(ceil(pow(1.7, float(level))))   # 1, 2, 3, 5, 8, 14, ...
