@@ -9,7 +9,6 @@ const ART    := "res://assets/art/"
 var _map: MapView
 var _hud: PanelContainer
 var _adbar: HBoxContainer
-var _page_host: Control
 var _pages: Array
 var _nav_btns: Array
 var _toasts: VBoxContainer
@@ -40,7 +39,7 @@ func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	theme = UITheme.build()
 	_bg(); _build_map(); _build_hud(); _build_adbar()
-	_build_bottom_bg(); _build_page_host(); _build_nav(); _build_toasts()
+	_build_bottom_bg(); _build_pages(); _build_nav(); _build_toasts()
 	GameState.city_unlocked.connect(func(_i): _toast("Cidade desbloqueada!", UITheme.CYAN))
 	GameState.country_changed.connect(func(i): _toast("Bem-vindo a " + Economy.country_name(i) + "!", UITheme.GOLD))
 	var loaded := SaveSystem.load_game()
@@ -150,20 +149,12 @@ func _build_bottom_bg() -> void:
 	bg.add_theme_stylebox_override("panel", UITheme.bottom_panel())
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE; add_child(bg)
 
-# ── Page host (manual visibility switch — avoids TabContainer scroll issues) ──
+# ── Pages — added directly to Main Control, each with own anchor offsets ──────
 
-func _build_page_host() -> void:
-	_page_host = Control.new()
-	_page_host.anchor_left = 0; _page_host.anchor_right = 1
-	_page_host.anchor_top = 1; _page_host.anchor_bottom = 1
-	_page_host.offset_top = -(NAV_H + TABS_H); _page_host.offset_bottom = -NAV_H
-	_page_host.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_page_host)
-
+func _build_pages() -> void:
 	_pages = [_build_fleet_tab(), _build_cities_tab(), _build_talents_tab(), _build_shop_tab()]
 	for pg in _pages:
-		pg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		_page_host.add_child(pg)
+		add_child(pg)
 
 # ── Custom nav bar ─────────────────────────────────────────────────────────────
 
@@ -210,23 +201,14 @@ func _switch_tab(i: int) -> void:
 
 func _scroll(title: String) -> Array:
 	var sc := ScrollContainer.new(); sc.name = title
+	sc.anchor_left = 0; sc.anchor_right = 1
+	sc.anchor_top = 1; sc.anchor_bottom = 1
+	sc.offset_top = -(NAV_H + TABS_H); sc.offset_bottom = -NAV_H
 	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	sc.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
-	# Pad content via an intermediate VBox
-	var outer := VBoxContainer.new(); outer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	outer.add_theme_constant_override("separation", 0)
-	outer.add_theme_constant_override("margin_top", 10)
-	sc.add_child(outer)
-	# Horizontal margin wrapper
-	var row := HBoxContainer.new(); row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	outer.add_child(row)
-	var pad_l := Control.new(); pad_l.custom_minimum_size = Vector2(10, 0); row.add_child(pad_l)
-	var v := VBoxContainer.new(); v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var v := VBoxContainer.new()
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	v.add_theme_constant_override("separation", 10)
-	row.add_child(v)
-	var pad_r := Control.new(); pad_r.custom_minimum_size = Vector2(10, 0); row.add_child(pad_r)
-	# Bottom padding
-	var pad_b := Control.new(); pad_b.custom_minimum_size = Vector2(0, 10); outer.add_child(pad_b)
+	sc.add_child(v)
 	return [sc, v]
 
 # ── Tab content ────────────────────────────────────────────────────────────────
@@ -519,7 +501,7 @@ func _show_settings() -> void:
 	box.add_child(restore)
 
 	# Version
-	var ver := _lbl("Drone Tycoon · v1.4.1 · © 2026 LPCF", 16, UITheme.MUTED)
+	var ver := _lbl("Drone Tycoon · v1.4.3 · © 2026 LPCF", 16, UITheme.MUTED)
 	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; box.add_child(ver)
 
 	# Reset (red, destructive)
