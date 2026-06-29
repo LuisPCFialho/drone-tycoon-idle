@@ -1,0 +1,19 @@
+# Godot 4+
+.godot/
+/android/
+/export/
+*.tmp
+*.apk
+*.aab
+
+# Signing keys — never commit key material
+/keystore/
+*.keystore
+*.jks
+
+# generated
+_montage.png
+
+# OS
+.DS_Store
+Thumbs.db

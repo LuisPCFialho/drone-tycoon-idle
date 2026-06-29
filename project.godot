@@ -1,0 +1,36 @@
+; Drone Tycoon: Sky Fleet — portrait, full-screen idle delivery tycoon. Godot 4.6.
+
+config_version=5
+
+[application]
+
+config/name="Drone Tycoon: Sky Fleet"
+config/version="1.0.0"
+run/main_scene="res://scenes/main.tscn"
+config/features=PackedStringArray("4.6", "GL Compatibility")
+config/icon="res://appicon.png"
+boot_splash/show_image=false
+
+[autoload]
+
+Fmt="*res://scripts/format.gd"
+Economy="*res://scripts/economy.gd"
+Billing="*res://scripts/billing.gd"
+Ads="*res://scripts/ads.gd"
+GameState="*res://scripts/game_state.gd"
+Audio="*res://scripts/audio.gd"
+SaveSystem="*res://scripts/save_system.gd"
+
+[display]
+
+window/size/viewport_width=720
+window/size/viewport_height=1280
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/handheld/orientation="portrait"
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+textures/vram_compression/import_etc2_astc=true
