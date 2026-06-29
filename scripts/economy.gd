@@ -1,37 +1,25 @@
 extends Node
-## Economy data & formulas (autoload: Economy). Long, gated, monetizable curve.
+## Economy data & formulas (autoload: Economy). World = 40 countries loaded from
+## data/world.json (real outlines + geographically-placed cities). Delivery-based.
 
-const HUBS := [
-	{"name": "Base", "pos": Vector2(0.50, 0.92)},
-	{"name": "Vila Norte", "pos": Vector2(0.24, 0.74)},
-	{"name": "Porto", "pos": Vector2(0.80, 0.70)},
-	{"name": "Cidade Alta", "pos": Vector2(0.34, 0.52)},
-	{"name": "Zona Industrial", "pos": Vector2(0.72, 0.48)},
-	{"name": "Aeroporto", "pos": Vector2(0.20, 0.30)},
-	{"name": "Metrópole", "pos": Vector2(0.62, 0.26)},
-	{"name": "Pico", "pos": Vector2(0.46, 0.10)},
-]
-
-# influence_total required to be allowed to unlock HUBS[i] (a prestige wall).
-const HUB_GATE := [0, 0, 1, 4, 10, 22, 45, 80]
+var WORLD: Array = []
 
 const UPGRADES := {
-	"speed": {"name": "Velocidade dos Drones", "base": 100.0, "rate": 1.22, "icon": "ic_speed"},
-	"cargo": {"name": "Capacidade de Carga", "base": 150.0, "rate": 1.24, "icon": "ic_cargo"},
-	"value": {"name": "Valor da Encomenda", "base": 220.0, "rate": 1.26, "icon": "ic_value"},
+	# Deliberately WEAK gains (player asked: upgrades less powerful), steep cost.
+	"speed": {"name": "Velocidade dos Drones", "base": 80.0, "rate": 1.26, "icon": "ic_speed"},
+	"cargo": {"name": "Capacidade de Carga", "base": 110.0, "rate": 1.28, "icon": "ic_cargo"},
+	"value": {"name": "Valor da Encomenda", "base": 150.0, "rate": 1.30, "icon": "ic_value"},
 }
 const UPGRADE_ORDER := ["speed", "cargo", "value"]
 
 const TALENTS := {
-	"global":  {"name": "Comando Central", "desc": "+12% lucros globais", "max": 100, "icon": "ic_prestige"},
-	"speed":   {"name": "Rotores Turbo", "desc": "+8% velocidade", "max": 60, "icon": "ic_speed"},
-	"value":   {"name": "Rotas Premium", "desc": "+8% valor da encomenda", "max": 60, "icon": "ic_value"},
+	"global":  {"name": "Comando Central", "desc": "+6% lucros globais", "max": 100, "icon": "ic_prestige"},
+	"speed":   {"name": "Rotores Turbo", "desc": "+4% velocidade", "max": 60, "icon": "ic_speed"},
+	"value":   {"name": "Rotas Premium", "desc": "+4% valor", "max": 60, "icon": "ic_value"},
 	"hangar":  {"name": "Hangar Eficiente", "desc": "-2% custo de drones", "max": 25, "icon": "ic_drone"},
-	"offline": {"name": "IA Logística", "desc": "+30 min de tempo offline", "max": 12, "icon": "ic_boost"},
 }
-const TALENT_ORDER := ["global", "speed", "value", "hangar", "offline"]
+const TALENT_ORDER := ["global", "speed", "value", "hangar"]
 
-# Gem shop — what GEMS buy (the gem sink). Makes gems (and buying gems) worthwhile.
 const GEM_SHOP_ORDER := ["boost", "cash", "warp"]
 const GEM_SHOP := {
 	"boost": {"name": "Núcleo de Lucro", "desc": "+25% lucros GLOBAIS, para sempre.", "icon": "ic_prestige"},
@@ -39,25 +27,60 @@ const GEM_SHOP := {
 	"warp":  {"name": "Salto Temporal 8h", "desc": "Ganha já 8 horas de lucros.", "cost": 80, "icon": "ic_boost"},
 }
 
-const MILESTONE_STEP := 50
+func _ready() -> void:
+	var f := FileAccess.open("res://data/world.json", FileAccess.READ)
+	if f:
+		var d: Variant = JSON.parse_string(f.get_as_text())
+		if typeof(d) == TYPE_DICTIONARY and d.has("countries"):
+			WORLD = d["countries"]
+		f.close()
+	if WORLD.is_empty():
+		WORLD = [{"name": "Portugal", "tier": 0, "outline": [[0.3,0.1],[0.4,0.9],[0.5,0.5]], "cities": [{"name":"Lisboa","x":0.4,"y":0.6,"capital":true},{"name":"Porto","x":0.42,"y":0.25,"capital":false}]}]
 
-func num_hubs() -> int: return HUBS.size()
-func hub_pos(i: int) -> Vector2: return HUBS[i]["pos"]
-func hub_name(i: int) -> String: return HUBS[i]["name"]
-func route_dist(i: int) -> float: return max(0.08, HUBS[0]["pos"].distance_to(HUBS[i]["pos"]))
+func num_countries() -> int:
+	return WORLD.size()
+
+func country(i: int) -> Dictionary:
+	return WORLD[clampi(i, 0, WORLD.size() - 1)]
+
+func country_name(i: int) -> String:
+	return country(i)["name"]
+
+func country_cities(i: int) -> Array:
+	return country(i)["cities"]
+
+func country_outline(i: int) -> PackedVector2Array:
+	var arr := PackedVector2Array()
+	for p in country(i)["outline"]:
+		arr.append(Vector2(p[0], p[1]))
+	return arr
+
+const DRONE_RATE := 1.16
+
+## Per-country payout scale (delivery value grows ~2.2x per country).
+func pay_tier(i: int) -> float:
+	return pow(2.2, float(i))
+
+## Per-country COST scale — grows MUCH faster than payouts so every country needs
+## a substantially bigger fleet than the last (escalating, long progression;
+## you cannot rush to the USA — it takes many hours).
+func cost_tier(i: int) -> float:
+	return pow(3.7, float(i))
 
 func upgrade_cost(key: String, level: int) -> float:
 	var u: Dictionary = UPGRADES[key]
 	return u["base"] * pow(u["rate"], float(level))
 
 func drone_cost(count: int) -> float:
-	return 12.0 * pow(1.13, float(max(0, count - 1)))
+	return 20.0 * pow(DRONE_RATE, float(max(0, count - 1)))
 
-func hub_unlock_cost(next_index: int) -> float:
-	return 400.0 * pow(6.5, float(max(0, next_index - 1)))
+## Cost to unlock the n-th delivery city in a country (n = number already active).
+func city_unlock_cost(country_idx: int, n: int) -> float:
+	return 200.0 * pow(2.1, float(n)) * cost_tier(country_idx)
 
-func hub_gate(next_index: int) -> int:
-	return HUB_GATE[next_index] if next_index < HUB_GATE.size() else 999999
+## Cost to expand to the next country (available once all cities are unlocked).
+func expand_cost(country_idx: int) -> float:
+	return 25000.0 * cost_tier(country_idx)
 
 func talent_cost(level: int) -> int:
 	return int(ceil(pow(1.7, float(level))))

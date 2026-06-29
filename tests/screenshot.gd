@@ -10,8 +10,8 @@ func _ready() -> void:
 	var tc: TabContainer = tabs[0] if tabs.size() > 0 else null
 	await _shot("export/preview.png")
 	if tc:
-		tc.current_tab = 2  # Talentos
-		await _shot("export/preview_talents.png")
+		tc.current_tab = 1  # Cidades
+		await _shot("export/preview_cities.png")
 		tc.current_tab = 3  # Loja
 		await _shot("export/preview_shop.png")
 	print("SHOT_SAVED")

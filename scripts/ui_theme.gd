@@ -56,24 +56,24 @@ static func build() -> Theme:
 static func _btn(bg: Color) -> StyleBoxFlat:
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = bg
-	sb.set_corner_radius_all(14)
-	sb.content_margin_left = 16; sb.content_margin_right = 16
-	sb.content_margin_top = 11; sb.content_margin_bottom = 11
-	sb.border_color = bg.lightened(0.18)
+	sb.set_corner_radius_all(22)
+	sb.content_margin_left = 18; sb.content_margin_right = 18
+	sb.content_margin_top = 14; sb.content_margin_bottom = 14
+	sb.border_color = bg.lightened(0.22)
 	sb.border_width_top = 2
 	sb.shadow_color = Color(0, 0, 0, 0.35)
-	sb.shadow_size = 5; sb.shadow_offset = Vector2(0, 3)
+	sb.shadow_size = 6; sb.shadow_offset = Vector2(0, 4)
 	return sb
 
 static func _panel(bg: Color, radius: int) -> StyleBoxFlat:
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = bg
-	sb.set_corner_radius_all(radius)
-	sb.set_content_margin_all(12)
+	sb.set_corner_radius_all(maxi(radius, 20))
+	sb.set_content_margin_all(14)
 	sb.border_color = BORDER
 	sb.set_border_width_all(1)
 	sb.shadow_color = Color(0, 0, 0, 0.30)
-	sb.shadow_size = 6; sb.shadow_offset = Vector2(0, 3)
+	sb.shadow_size = 7; sb.shadow_offset = Vector2(0, 4)
 	return sb
 
 static func _tab(bg: Color) -> StyleBoxFlat:

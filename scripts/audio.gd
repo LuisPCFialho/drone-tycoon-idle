@@ -32,9 +32,8 @@ func _ready() -> void:
 	_ambient.play()
 	if has_node("/root/GameState"):
 		GameState.delivered.connect(_on_delivered)
-		GameState.prestiged.connect(func(_g): play("prestige"))
-		GameState.milestone_reached.connect(func(_m): play("milestone", 1.0, -3.0))
-		GameState.hub_unlocked.connect(func(_i): play("unlock", 1.0, -2.0))
+		GameState.country_changed.connect(func(_i): play("milestone", 1.0, -2.0))
+		GameState.city_unlocked.connect(func(_i): play("unlock", 1.0, -3.0))
 
 func _process(_delta: float) -> void:
 	if _ambient:
