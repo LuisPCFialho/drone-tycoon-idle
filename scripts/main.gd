@@ -108,7 +108,10 @@ func _build_tabs() -> void:
 	_tabs.add_child(_build_fleet_tab()); _tabs.add_child(_build_cities_tab()); _tabs.add_child(_build_talents_tab()); _tabs.add_child(_build_shop_tab())
 
 func _scroll(title: String) -> Array:
-	var sc := ScrollContainer.new(); sc.name = title; sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	var sc := ScrollContainer.new(); sc.name = title
+	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	sc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sc.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	var v := VBoxContainer.new(); v.size_flags_horizontal = Control.SIZE_EXPAND_FILL; v.add_theme_constant_override("separation", 10); sc.add_child(v)
 	return [sc, v]
 
@@ -155,10 +158,16 @@ func _build_talents_tab() -> ScrollContainer:
 
 func _build_shop_tab() -> ScrollContainer:
 	var r := _scroll("Loja"); var v: VBoxContainer = r[1]
-	v.add_child(_lbl("Gastar Gemas", 22, UITheme.CYAN))
+	# Gems explanation banner
+	var gem_info := _card(UITheme.CYAN)
+	var gi := VBoxContainer.new(); gi.add_theme_constant_override("separation", 6); gem_info.add_child(gi)
+	gi.add_child(_lbl("O que são Gemas? 💎", 22, UITheme.CYAN))
+	var gdesc := _lbl("Ganha Gemas vendo anúncios (botão +60 Gemas acima)\nou compra pacotes. Serve para comprar bónus poderosos:", 18, UITheme.INK)
+	gdesc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; gi.add_child(gdesc)
+	v.add_child(gem_info)
 	for id in Economy.GEM_SHOP_ORDER:
 		v.add_child(_make_gem_row(id))
-	v.add_child(_lbl("Comprar com dinheiro", 22, UITheme.GOLD))
+	v.add_child(_lbl("Comprar com dinheiro real", 22, UITheme.GOLD))
 	for id in Billing.PRODUCT_ORDER:
 		v.add_child(_make_iap_row(id))
 	v.add_child(_lbl("Compras de demonstração (sem pagamento real).", 16, UITheme.MUTED))
