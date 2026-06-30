@@ -905,6 +905,14 @@ func _reward_fx(node: Control, color: Color, kind := "spark", n := 6) -> void:
 
 # ── Popups ───────────────────────────────────────────────────────────────────────
 
+## Compact [icon_name, short_text] for a daily reward cell (avoids text wrap).
+func _daily_compact(r: Dictionary) -> Array:
+	if r.has("hours"): return ["ic_cash", "%dh" % int(r["hours"])]
+	if r.has("boost"): return ["ic_boost", "2×"]
+	if r.has("pgems"): return ["ic_prestige", "+%d" % int(r.get("gems", r["pgems"]))]
+	if r.has("gems"):  return ["ic_gems", "+%d" % int(r["gems"])]
+	return ["ic_gems", "?"]
+
 func _show_daily_popup() -> void:
 	var layer := _overlay(); var box := _popup_box(layer, UITheme.GOLD)
 	var hd := HBoxContainer.new(); hd.alignment = BoxContainer.ALIGNMENT_CENTER; hd.add_theme_constant_override("separation", 8)
@@ -913,21 +921,25 @@ func _show_daily_popup() -> void:
 	streak_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; box.add_child(streak_info)
 
 	var grid := GridContainer.new(); grid.columns = 7
-	grid.add_theme_constant_override("h_separation", 6); grid.add_theme_constant_override("v_separation", 6); box.add_child(grid)
+	grid.add_theme_constant_override("h_separation", 5); grid.add_theme_constant_override("v_separation", 5); box.add_child(grid)
 	var cur_idx := (Daily.streak - 1) % Daily.REWARDS.size()
 	for i in Daily.REWARDS.size():
 		var day_box := PanelContainer.new()
+		day_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var claimed := (i < cur_idx)
 		var current := (i == cur_idx) and Daily.pending
 		day_box.add_theme_stylebox_override("panel", UITheme.daily_card(claimed, current))
-		var dv := VBoxContainer.new(); dv.add_theme_constant_override("separation", 2); day_box.add_child(dv)
+		var dv := VBoxContainer.new(); dv.add_theme_constant_override("separation", 3); day_box.add_child(dv)
 		var dl := _lbl("D%d" % (i+1), 12, UITheme.MUTED if not current else UITheme.GOLD)
-		dl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; dv.add_child(dl)
-		var rl := _lbl(str(Daily.REWARDS[i]["label"]), 11, UITheme.INK if not claimed else UITheme.GREEN)
+		dl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		dl.size_flags_horizontal = Control.SIZE_EXPAND_FILL; dv.add_child(dl)
+		var cd := _daily_compact(Daily.REWARDS[i])
+		var ic := _icon(cd[0], 20); ic.size_flags_horizontal = Control.SIZE_SHRINK_CENTER; dv.add_child(ic)
+		var rl := _lbl(cd[1], 12, UITheme.INK if not claimed else UITheme.GREEN)
 		rl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		rl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; dv.add_child(rl)
+		rl.size_flags_horizontal = Control.SIZE_EXPAND_FILL; dv.add_child(rl)
 		if claimed:
-			var ck := _icon("ic_check", 16); ck.size_flags_horizontal = Control.SIZE_SHRINK_CENTER; dv.add_child(ck)
+			var ck := _icon("ic_check", 15); ck.size_flags_horizontal = Control.SIZE_SHRINK_CENTER; dv.add_child(ck)
 		if current:
 			Fx.breathe(day_box, true)
 		grid.add_child(day_box)
@@ -999,7 +1011,7 @@ func _show_settings() -> void:
 	restore.pressed.connect(func(): _toast("A verificar compras...", UITheme.ACCENT); SaveSystem.save_game())
 	box.add_child(restore)
 
-	box.add_child(_lbl("Drone Tycoon: Sky Fleet · v1.6.0 · © 2026 LPCF", 15, UITheme.MUTED))
+	box.add_child(_lbl("Drone Tycoon: Sky Fleet · v1.6.1 · © 2026 LPCF", 15, UITheme.MUTED))
 
 	var reset := Button.new(); reset.text = "Repor progresso"
 	reset.add_theme_font_size_override("font_size", 22); reset.custom_minimum_size = Vector2(0, 58)
@@ -1056,18 +1068,33 @@ func _overlay() -> CanvasLayer:
 	return layer
 
 func _popup_box(layer: CanvasLayer, accent := UITheme.ACCENT) -> VBoxContainer:
-	var wrap := Control.new(); wrap.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); layer.add_child(wrap)
-	var center := CenterContainer.new(); center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); wrap.add_child(center)
-	var sc := ScrollContainer.new(); sc.custom_minimum_size = Vector2(580, 0)
-	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; center.add_child(sc)
+	# ScrollContainer anchored to a tall region with screen-edge margins, so the
+	# popup always has a real (non-zero) height and scrolls if taller than screen.
+	var sc := ScrollContainer.new()
+	sc.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	sc.offset_left = 30; sc.offset_right = -30
+	sc.offset_top = 64; sc.offset_bottom = -64
+	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	layer.add_child(sc)
+	# Center the panel vertically when the content is shorter than the viewport.
+	var col := VBoxContainer.new()
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	col.custom_minimum_size = Vector2(0, 1)
+	sc.add_child(col)
 	var pc := PanelContainer.new(); pc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	pc.add_theme_stylebox_override("panel", UITheme.popup_frame(accent)); sc.add_child(pc)
+	pc.add_theme_stylebox_override("panel", UITheme.popup_frame(accent)); col.add_child(pc)
 	var box := VBoxContainer.new(); box.add_theme_constant_override("separation", 14); pc.add_child(box)
-	# spring-in
-	pc.pivot_offset = Vector2(290, 200); pc.scale = Vector2(0.9, 0.9); pc.modulate = Color(1,1,1,0)
-	var tw := pc.create_tween(); tw.set_parallel(true)
-	tw.tween_property(pc, "scale", Vector2.ONE, 0.26).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tw.tween_property(pc, "modulate:a", 1.0, 0.2)
+	# fade + tiny spring-in (modulate always ends at 1, even with reduce_motion)
+	pc.modulate = Color(1, 1, 1, 0)
+	if Fx.reduce_motion:
+		pc.modulate = Color.WHITE
+	else:
+		pc.pivot_offset = Vector2(330, 90); pc.scale = Vector2(0.96, 0.96)
+		var tw := pc.create_tween(); tw.set_parallel(true)
+		tw.tween_property(pc, "scale", Vector2.ONE, 0.24).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tw.tween_property(pc, "modulate:a", 1.0, 0.18)
 	return box
 
 func _close_btn(layer: CanvasLayer) -> Button:
