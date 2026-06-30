@@ -127,6 +127,16 @@ func check_all_state() -> void:
     check("country_2",   gs.current_country >= 1)
     check("country_5",   gs.current_country >= 4)
     check("country_10",  gs.current_country >= 9)
+    # Deliveries — prefer saved counter; fall back to GameState.total_deliveries for old saves
+    var d: int = maxi(int(counters.get("deliveries", 0)), gs.total_deliveries)
+    check("first_delivery", d >= 1)
+    check("deliveries_100",  d >= 100)
+    check("deliveries_1k",   d >= 1000)
+    check("deliveries_10k",  d >= 10000)
+    # Cities — re-check from saved counter
+    var ct: int = int(counters.get("cities_total", 0))
+    check("cities_10", ct >= 10)
+    check("cities_50", ct >= 50)
 
 func note_drone_buy(count: int, total: int) -> void:
     check("buy_100_once", count >= 100)

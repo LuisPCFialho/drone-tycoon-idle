@@ -1,5 +1,5 @@
 extends Control
-## Main scene — Drone Tycoon: Sky Fleet  v1.7.0 (UI/UX improvements)
+## Main scene — Drone Tycoon: Sky Fleet  v1.7.1 (achievements fix + banana rain)
 
 const NAV_H  := 132.0
 const TABS_H := 532.0
@@ -873,12 +873,15 @@ func _process(delta: float) -> void:
 	_update_nav_dots()
 
 	if Engine.get_frames_drawn() % 60 == 0:
-		Achievements.check("income_1k",  ips >= 1000.0)
-		Achievements.check("income_1m",  ips >= 1_000_000.0)
-		Achievements.check("credits_1m", GameState.credits >= 1_000_000.0)
-		Achievements.check("credits_1b", GameState.credits >= 1_000_000_000.0)
-		Achievements.check("credits_1t", GameState.credits >= 1_000_000_000_000.0)
-		Achievements.check("gems_100",   GameState.gems >= 100)
+		Achievements.check("income_1k",    ips >= 1000.0)
+		Achievements.check("income_1m",    ips >= 1_000_000.0)
+		Achievements.check("credits_1m",   GameState.credits >= 1_000_000.0)
+		Achievements.check("credits_1b",   GameState.credits >= 1_000_000_000.0)
+		Achievements.check("credits_1t",   GameState.credits >= 1_000_000_000_000.0)
+		Achievements.check("earned_10b",   GameState.total_earned >= 10_000_000_000.0)
+		Achievements.check("earned_1t",    GameState.total_earned >= 1_000_000_000_000.0)
+		Achievements.check("influence_50", GameState.influence_total >= 50)
+		Achievements.check("gems_100",     GameState.gems >= 100)
 
 func _unlock_progress() -> float:
 	var cc := GameState.next_city_cost()
@@ -927,14 +930,44 @@ func _on_city_unlocked(_i: int) -> void:
 	Fx.screen_flash(self, UITheme.CYAN, 0.10)
 
 func _on_country_changed(i: int) -> void:
-	_toast("Bem-vindo a " + Economy.country_name(i) + "!", UITheme.GOLD, "ic_city")
 	var c := Vector2(size.x * 0.5, size.y * 0.40)
-	Fx.confetti(self, c, 48, [UITheme.GOLD, UITheme.CYAN, UITheme.GREEN, UITheme.PINK])
-	Fx.screen_flash(self, UITheme.GOLD, 0.18)
-	Fx.screen_shake(_map, 9.0)
-	Fx.ring_pulse(self, c, UITheme.GOLD, 2.8)
-	Fx.ring_pulse(self, c, UITheme.CYAN, 2.2)
-	Audio.play("milestone")
+	if i >= Economy.num_countries() - 1:
+		_toast("🏆 MISSÃO COMPLETA! Conquistaste o mundo!", UITheme.GOLD, "ic_city")
+		_banana_rain()
+		Fx.confetti(self, c, 80, [UITheme.GOLD, UITheme.CYAN, UITheme.GREEN, UITheme.PINK, Color(1,0.9,0.1)])
+		Fx.screen_flash(self, UITheme.GOLD, 0.30)
+		Fx.screen_shake(_map, 14.0)
+		for _r in range(4):
+			Fx.ring_pulse(self, c, UITheme.GOLD, 3.2)
+			Fx.ring_pulse(self, c, UITheme.CYAN, 2.6)
+		Audio.play("prestige")
+	else:
+		_toast("Bem-vindo a " + Economy.country_name(i) + "!", UITheme.GOLD, "ic_city")
+		Fx.confetti(self, c, 48, [UITheme.GOLD, UITheme.CYAN, UITheme.GREEN, UITheme.PINK])
+		Fx.screen_flash(self, UITheme.GOLD, 0.18)
+		Fx.screen_shake(_map, 9.0)
+		Fx.ring_pulse(self, c, UITheme.GOLD, 2.8)
+		Fx.ring_pulse(self, c, UITheme.CYAN, 2.2)
+		Audio.play("milestone")
+
+func _banana_rain() -> void:
+	var rng := RandomNumberGenerator.new(); rng.randomize()
+	for i in range(50):
+		var ban := Label.new()
+		ban.text = "🍌"
+		var sz := int(rng.randf_range(28.0, 72.0))
+		ban.add_theme_font_size_override("font_size", sz)
+		ban.position = Vector2(rng.randf() * size.x, -90.0)
+		ban.rotation = rng.randf_range(-0.6, 0.6)
+		add_child(ban)
+		var dur := rng.randf_range(1.4, 3.2)
+		var delay := rng.randf_range(0.0, 2.5)
+		var tw := ban.create_tween()
+		tw.tween_interval(delay)
+		tw.set_parallel(true)
+		tw.tween_property(ban, "position:y", size.y + 120.0, dur).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		tw.tween_property(ban, "rotation", ban.rotation + rng.randf_range(-1.2, 1.2), dur)
+		tw.chain().tween_callback(ban.queue_free)
 
 func _on_achievement(id: String) -> void:
 	var def: Dictionary = Achievements.DEFS.get(id, {})
@@ -1047,13 +1080,13 @@ func _show_settings() -> void:
 	hd.add_child(_icon("ic_gear", 38)); hd.add_child(_lbl("Definições", 32, UITheme.INK)); box.add_child(hd)
 
 	var mute := CheckButton.new(); mute.text = "Som activado"
-	mute.add_theme_font_size_override("font_size", 26); mute.custom_minimum_size = Vector2(0, 60)
+	mute.add_theme_font_size_override("font_size", 30); mute.custom_minimum_size = Vector2(0, 82)
 	mute.button_pressed = not Audio.muted
 	mute.toggled.connect(func(on): Audio.muted = not on; SaveSystem.save_game())
 	box.add_child(mute)
 
 	var rm := CheckButton.new(); rm.text = "Reduzir animações"
-	rm.add_theme_font_size_override("font_size", 26); rm.custom_minimum_size = Vector2(0, 60)
+	rm.add_theme_font_size_override("font_size", 30); rm.custom_minimum_size = Vector2(0, 82)
 	rm.button_pressed = Fx.reduce_motion
 	rm.toggled.connect(func(on): Fx.set_reduce_motion(on))
 	box.add_child(rm)
@@ -1067,15 +1100,16 @@ func _show_settings() -> void:
 	stats.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; box.add_child(stats)
 
 	var restore := _wide_btn(UITheme.ACCENT); restore.text = "Restaurar compras"
-	restore.custom_minimum_size = Vector2(0, 72)
+	restore.custom_minimum_size = Vector2(0, 84)
+	restore.add_theme_font_size_override("font_size", 26)
 	restore.pressed.connect(func(): Fx.press(restore); _toast("A verificar compras...", UITheme.ACCENT); SaveSystem.save_game())
 	box.add_child(restore)
 
-	box.add_child(_lbl("Drone Tycoon: Sky Fleet · v1.7.0 · © 2026 LPCF", 15, UITheme.MUTED))
+	box.add_child(_lbl("Drone Tycoon: Sky Fleet · v1.7.1 · © 2026 LPCF", 15, UITheme.MUTED))
 
 	var reset := Button.new(); reset.text = "Repor progresso"
-	reset.add_theme_font_size_override("font_size", 24); reset.add_theme_font_override("font", UITheme.font("Bold"))
-	reset.custom_minimum_size = Vector2(0, 72)
+	reset.add_theme_font_size_override("font_size", 28); reset.add_theme_font_override("font", UITheme.font("Bold"))
+	reset.custom_minimum_size = Vector2(0, 84)
 	reset.add_theme_stylebox_override("normal", UITheme.danger_btn())
 	reset.add_theme_stylebox_override("focus",  StyleBoxEmpty.new())
 	reset.pressed.connect(func(): SaveSystem.wipe(); get_tree().reload_current_scene())
@@ -1159,8 +1193,8 @@ func _popup_box(layer: CanvasLayer, accent := UITheme.ACCENT) -> VBoxContainer:
 	return box
 
 func _close_btn(layer: CanvasLayer) -> Button:
-	var close := Button.new(); close.text = "Fechar"; close.add_theme_font_size_override("font_size", 26)
-	close.custom_minimum_size = Vector2(0, 72); close.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	var close := Button.new(); close.text = "Fechar"; close.add_theme_font_size_override("font_size", 30)
+	close.custom_minimum_size = Vector2(0, 84); close.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 	close.pressed.connect(func(): Fx.press(close); layer.queue_free())
 	return close
 
