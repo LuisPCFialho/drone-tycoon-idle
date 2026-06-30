@@ -9,6 +9,14 @@ class_name MapView
 var band_top := 150.0
 var band_bottom := 760.0
 
+# --- zoom / pan (pinch + drag) ---
+var zoom := 1.0
+var pan := Vector2.ZERO
+const ZOOM_MIN := 1.0
+const ZOOM_MAX := 4.0
+var _touches: Dictionary = {}      # touch index -> position
+var _last_pinch := 0.0
+
 # --- shared pulse clock ---
 var _t := 0.0
 
@@ -46,7 +54,7 @@ const POP_CAP := 16
 const TRAIL_LEN := 8
 
 func _ready() -> void:
-	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	mouse_filter = Control.MOUSE_FILTER_STOP   # receives pinch/drag in its visible band
 	_font = UITheme.font("Bold")
 	_drone_tex = [load("res://assets/art/drone_blue.png"), load("res://assets/art/drone_teal.png"), load("res://assets/art/drone_amber.png")]
 	_package = load("res://assets/art/package.png")
@@ -55,8 +63,15 @@ func _ready() -> void:
 	_hub_city = load("res://assets/art/hub_city.png")
 	_hub_city2 = load("res://assets/art/hub_city2.png")
 	GameState.delivered.connect(_on_delivered)
+	GameState.country_changed.connect(func(_i): _reset_view())
 	_seed_ambiance()
 	set_process(true)
+
+func _reset_view() -> void:
+	zoom = 1.0
+	pan = Vector2.ZERO
+	_touches.clear()
+	_last_pinch = 0.0
 
 func _seed_ambiance() -> void:
 	var rng := RandomNumberGenerator.new()
@@ -119,7 +134,71 @@ func _proj(p: Vector2) -> Vector2:
 	var side: float = min(bw, bh) * 0.92
 	var ox: float = (bw - side) * 0.5
 	var oy: float = band_top + (bh - side) * 0.5
-	return Vector2(ox + p.x * side, oy + p.y * side)
+	var base := Vector2(ox + p.x * side, oy + p.y * side)
+	# apply zoom + pan around the band centre
+	var ctr := Vector2(bw * 0.5, band_top + bh * 0.5)
+	return ctr + (base - ctr) * zoom + pan
+
+# ---------------------------------------------------------------- input (zoom/pan)
+
+func _gui_input(event: InputEvent) -> void:
+	if event is InputEventScreenTouch:
+		var t := event as InputEventScreenTouch
+		if t.pressed:
+			_touches[t.index] = t.position
+		else:
+			_touches.erase(t.index)
+			if _touches.size() < 2:
+				_last_pinch = 0.0
+	elif event is InputEventScreenDrag:
+		var d := event as InputEventScreenDrag
+		_touches[d.index] = d.position
+		if _touches.size() >= 2:
+			var ks := _touches.keys()
+			var a: Vector2 = _touches[ks[0]]
+			var b: Vector2 = _touches[ks[1]]
+			var dist := a.distance_to(b)
+			if _last_pinch > 0.0 and dist > 0.0:
+				_zoom_at(zoom * (dist / _last_pinch), (a + b) * 0.5)
+			_last_pinch = dist
+		else:
+			pan += d.relative
+			_clamp_pan()
+		accept_event()
+	elif event is InputEventMouseButton:
+		if not _touches.is_empty():
+			return
+		var mb := event as InputEventMouseButton
+		if mb.pressed and mb.button_index == MOUSE_BUTTON_WHEEL_UP:
+			_zoom_at(zoom * 1.12, mb.position); accept_event()
+		elif mb.pressed and mb.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			_zoom_at(zoom / 1.12, mb.position); accept_event()
+	elif event is InputEventMouseMotion:
+		if not _touches.is_empty():
+			return
+		var mm := event as InputEventMouseMotion
+		if (mm.button_mask & MOUSE_BUTTON_MASK_LEFT) != 0:
+			pan += mm.relative
+			_clamp_pan()
+			accept_event()
+
+func _zoom_at(target: float, focus: Vector2) -> void:
+	var old := zoom
+	zoom = clampf(target, ZOOM_MIN, ZOOM_MAX)
+	var ctr := Vector2(size.x * 0.5, band_top + (band_bottom - band_top) * 0.5)
+	# keep the focus point stationary on screen
+	pan = pan - (focus - ctr - pan) * (zoom / old - 1.0)
+	if zoom <= ZOOM_MIN + 0.001:
+		zoom = ZOOM_MIN
+		pan = Vector2.ZERO
+	_clamp_pan()
+
+func _clamp_pan() -> void:
+	var bh := band_bottom - band_top
+	var mx := size.x * 0.5 * (zoom - 1.0) + 80.0
+	var my := bh * 0.5 * (zoom - 1.0) + 80.0
+	pan.x = clampf(pan.x, -mx, mx)
+	pan.y = clampf(pan.y, -my, my)
 
 func _draw() -> void:
 	var w := size.x

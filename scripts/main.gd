@@ -1,8 +1,8 @@
 extends Control
-## Main scene — Drone Tycoon: Sky Fleet  v1.6.0 (Aurora Logistics visual overhaul)
+## Main scene — Drone Tycoon: Sky Fleet  v1.6.2 (Aurora Logistics visual overhaul)
 
-const NAV_H  := 112.0
-const TABS_H := 538.0
+const NAV_H  := 132.0
+const TABS_H := 532.0
 const AD_H   := 52.0
 const ART    := "res://assets/art/"
 const GUTTER := 12.0
@@ -137,8 +137,8 @@ func _build_hud() -> void:
 	_vip_badge.visible = false; r1.add_child(_vip_badge)
 	var sp := Control.new(); sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL; r1.add_child(sp)
 	var gear := Button.new(); gear.icon = _opt_tex("ic_gear")
-	gear.expand_icon = true; gear.add_theme_constant_override("icon_max_width", 28)
-	gear.custom_minimum_size = Vector2(52, 52)
+	gear.expand_icon = true; gear.add_theme_constant_override("icon_max_width", 40)
+	gear.custom_minimum_size = Vector2(64, 64)
 	gear.add_theme_stylebox_override("normal", UITheme.nav_item(false))
 	gear.add_theme_stylebox_override("hover",  UITheme.nav_item(true))
 	gear.add_theme_stylebox_override("focus",  StyleBoxEmpty.new())
@@ -246,6 +246,17 @@ func _build_pages() -> void:
 			  _build_legado_tab(), _build_shop_tab()]
 	for pg in _pages:
 		add_child(pg)
+		_make_scrollable(pg)
+
+## Make the whole card surface draggable to scroll: every non-button Control
+## becomes MOUSE_FILTER_IGNORE so touch-drags reach the ScrollContainer (Godot
+## only scrolls where the drag is NOT consumed by a STOP control). Buttons keep
+## STOP so taps still register.
+func _make_scrollable(n: Node) -> void:
+	for child in n.get_children():
+		if child is Control and not (child is BaseButton):
+			(child as Control).mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_make_scrollable(child)
 
 # ── Nav bar ─────────────────────────────────────────────────────────────────────
 
@@ -276,12 +287,12 @@ func _make_nav_btn(icon_name: String, label_text: String, idx: int) -> Button:
 	btn.add_theme_stylebox_override("focus",   StyleBoxEmpty.new())
 
 	var box := VBoxContainer.new(); box.alignment = BoxContainer.ALIGNMENT_CENTER
-	box.add_theme_constant_override("separation", 4)
+	box.add_theme_constant_override("separation", 6)
 	box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	box.mouse_filter = Control.MOUSE_FILTER_IGNORE; btn.add_child(box)
-	var ic := _icon(icon_name, 30); ic.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	var ic := _icon(icon_name, 40); ic.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	ic.mouse_filter = Control.MOUSE_FILTER_IGNORE; box.add_child(ic)
-	var lbl := Label.new(); lbl.text = label_text; lbl.add_theme_font_size_override("font_size", 14)
+	var lbl := Label.new(); lbl.text = label_text; lbl.add_theme_font_size_override("font_size", 17)
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	box.add_child(lbl)
 
@@ -982,17 +993,17 @@ func _show_prestige_confirm() -> void:
 
 func _show_settings() -> void:
 	var layer := _overlay(); var box := _popup_box(layer, UITheme.ACCENT)
-	var hd := HBoxContainer.new(); hd.alignment = BoxContainer.ALIGNMENT_CENTER; hd.add_theme_constant_override("separation", 8)
-	hd.add_child(_icon("ic_gear", 28)); hd.add_child(_lbl("Definições", 30, UITheme.INK)); box.add_child(hd)
+	var hd := HBoxContainer.new(); hd.alignment = BoxContainer.ALIGNMENT_CENTER; hd.add_theme_constant_override("separation", 10)
+	hd.add_child(_icon("ic_gear", 38)); hd.add_child(_lbl("Definições", 32, UITheme.INK)); box.add_child(hd)
 
 	var mute := CheckButton.new(); mute.text = "Som activado"
-	mute.add_theme_font_size_override("font_size", 23)
+	mute.add_theme_font_size_override("font_size", 26); mute.custom_minimum_size = Vector2(0, 60)
 	mute.button_pressed = not Audio.muted
 	mute.toggled.connect(func(on): Audio.muted = not on; SaveSystem.save_game())
 	box.add_child(mute)
 
 	var rm := CheckButton.new(); rm.text = "Reduzir animações"
-	rm.add_theme_font_size_override("font_size", 23)
+	rm.add_theme_font_size_override("font_size", 26); rm.custom_minimum_size = Vector2(0, 60)
 	rm.button_pressed = Fx.reduce_motion
 	rm.toggled.connect(func(on): Fx.set_reduce_motion(on))
 	box.add_child(rm)
@@ -1000,21 +1011,20 @@ func _show_settings() -> void:
 	var stats_txt := "Ganhos totais: %s  ·  Drones: %d  ·  Países: %d\nPrestige: %d  ·  Conquistas: %d/%d" % [
 		Fmt.short(GameState.total_earned), GameState.drones, GameState.current_country + 1,
 		Prestige.count, Achievements.done_count(), Achievements.total_count()]
-	var stats := _lbl(stats_txt, 16, UITheme.MUTED)
+	var stats := _lbl(stats_txt, 17, UITheme.MUTED)
 	stats.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	stats.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; box.add_child(stats)
 
-	var restore := Button.new(); restore.text = "Restaurar compras"
-	restore.add_theme_font_size_override("font_size", 22); restore.custom_minimum_size = Vector2(0, 58)
-	restore.add_theme_stylebox_override("normal", UITheme.solid(UITheme.ACCENT, 16))
-	restore.add_theme_stylebox_override("focus",  StyleBoxEmpty.new())
-	restore.pressed.connect(func(): _toast("A verificar compras...", UITheme.ACCENT); SaveSystem.save_game())
+	var restore := _wide_btn(UITheme.ACCENT); restore.text = "Restaurar compras"
+	restore.custom_minimum_size = Vector2(0, 72)
+	restore.pressed.connect(func(): Fx.press(restore); _toast("A verificar compras...", UITheme.ACCENT); SaveSystem.save_game())
 	box.add_child(restore)
 
-	box.add_child(_lbl("Drone Tycoon: Sky Fleet · v1.6.1 · © 2026 LPCF", 15, UITheme.MUTED))
+	box.add_child(_lbl("Drone Tycoon: Sky Fleet · v1.6.2 · © 2026 LPCF", 15, UITheme.MUTED))
 
 	var reset := Button.new(); reset.text = "Repor progresso"
-	reset.add_theme_font_size_override("font_size", 22); reset.custom_minimum_size = Vector2(0, 58)
+	reset.add_theme_font_size_override("font_size", 24); reset.add_theme_font_override("font", UITheme.font("Bold"))
+	reset.custom_minimum_size = Vector2(0, 72)
 	reset.add_theme_stylebox_override("normal", UITheme.danger_btn())
 	reset.add_theme_stylebox_override("focus",  StyleBoxEmpty.new())
 	reset.pressed.connect(func(): SaveSystem.wipe(); get_tree().reload_current_scene())
@@ -1098,9 +1108,9 @@ func _popup_box(layer: CanvasLayer, accent := UITheme.ACCENT) -> VBoxContainer:
 	return box
 
 func _close_btn(layer: CanvasLayer) -> Button:
-	var close := Button.new(); close.text = "Fechar"; close.add_theme_font_size_override("font_size", 24)
-	close.custom_minimum_size = Vector2(0, 64); close.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
-	close.pressed.connect(func(): layer.queue_free())
+	var close := Button.new(); close.text = "Fechar"; close.add_theme_font_size_override("font_size", 26)
+	close.custom_minimum_size = Vector2(0, 72); close.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	close.pressed.connect(func(): Fx.press(close); layer.queue_free())
 	return close
 
 # ── Primitives ───────────────────────────────────────────────────────────────────
