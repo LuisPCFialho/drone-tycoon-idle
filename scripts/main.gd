@@ -1,5 +1,5 @@
 extends Control
-## Main scene — Drone Tycoon: Sky Fleet  v1.6.3 (Aurora Logistics visual overhaul)
+## Main scene — Drone Tycoon: Sky Fleet  v1.6.4 (city costs much higher)
 
 const NAV_H  := 132.0
 const TABS_H := 532.0
@@ -1043,7 +1043,7 @@ func _show_settings() -> void:
 	restore.pressed.connect(func(): Fx.press(restore); _toast("A verificar compras...", UITheme.ACCENT); SaveSystem.save_game())
 	box.add_child(restore)
 
-	box.add_child(_lbl("Drone Tycoon: Sky Fleet · v1.6.3 · © 2026 LPCF", 15, UITheme.MUTED))
+	box.add_child(_lbl("Drone Tycoon: Sky Fleet · v1.6.4 · © 2026 LPCF", 15, UITheme.MUTED))
 
 	var reset := Button.new(); reset.text = "Repor progresso"
 	reset.add_theme_font_size_override("font_size", 24); reset.add_theme_font_override("font", UITheme.font("Bold"))

@@ -76,8 +76,10 @@ func drone_cost(count: int) -> float:
 	return 20.0 * pow(DRONE_RATE, float(max(0, count - 1)))
 
 ## Cost to unlock the n-th delivery city in a country (n = number already active).
+## Steepened in v1.6.4: base ×4.7, per-city exponent raised so later cities
+## within a country require sustained grinding before expanding.
 func city_unlock_cost(country_idx: int, n: int) -> float:
-	return 320.0 * pow(2.3, float(n)) * cost_tier(country_idx)
+	return 1500.0 * pow(2.8, float(n)) * cost_tier(country_idx)
 
 ## Cost to expand to the next country (available once all cities are unlocked).
 ## Big upfront gate so jumping country is a real milestone, not a quick hop.
