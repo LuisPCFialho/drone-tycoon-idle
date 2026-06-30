@@ -1,26 +1,67 @@
 extends RefCounted
 class_name UITheme
-## Modern dark theme – glassmorphic, vibrant, mobile-first.
+## Aurora Logistics — Premium Sky Command UI theme.
+## Glassmorphic, depth-layered, mobile-first. StyleBoxFlat only — depth is faked
+## with lightened top borders (top-lighting), Shadow-Navy drop shadows and a
+## standardized corner-radius scale.
 
-const BG0      := Color(0.04, 0.05, 0.10)
-const BG1      := Color(0.07, 0.10, 0.18)
-const PANEL    := Color(0.10, 0.14, 0.24)
-const PANEL2   := Color(0.13, 0.17, 0.28)
-const BORDER   := Color(0.20, 0.26, 0.42)
-const INK      := Color(0.95, 0.97, 1.00)
-const MUTED    := Color(0.52, 0.60, 0.76)
-const ACCENT   := Color(0.28, 0.52, 1.00)
-const ACCENT_D := Color(0.18, 0.38, 0.82)
-const GREEN    := Color(0.13, 0.82, 0.48)
-const GREEN_D  := Color(0.08, 0.62, 0.35)
-const GOLD     := Color(1.00, 0.78, 0.22)
-const GOLD_D   := Color(0.82, 0.58, 0.10)
-const CYAN     := Color(0.22, 0.82, 0.95)
-const VIOLET   := Color(0.62, 0.42, 1.00)
-const PRESTIGE := Color(0.82, 0.62, 1.00)   # prestige gems / prestige UI
-const ORANGE   := Color(1.00, 0.52, 0.15)   # events / alerts
-const RED      := Color(0.92, 0.28, 0.32)   # error / danger
-const PINK     := Color(1.00, 0.40, 0.72)   # special highlight
+# ── palette (final hex set) ───────────────────────────────────────────────────
+const BG0      := Color(0.027, 0.043, 0.086)   # Void      #070B16
+const BG1      := Color(0.055, 0.082, 0.149)   # Midnight  #0E1526
+const PANEL    := Color(0.078, 0.110, 0.188)   # Panel     #141C30
+const PANEL2   := Color(0.102, 0.141, 0.251)   # Panel Raised #1A2440
+const BORDER   := Color(0.165, 0.212, 0.329)   # Hairline  #2A3654
+const INK      := Color(0.949, 0.965, 1.000)   # Ink       #F2F6FF
+const MUTED    := Color(0.529, 0.580, 0.690)   # Muted     #8794B0
+const ACCENT   := Color(0.290, 0.549, 1.000)   # Sky       #4A8CFF
+const ACCENT_D := Color(0.180, 0.357, 0.839)   # Sky Deep  #2E5BD6
+const GREEN    := Color(0.133, 0.816, 0.541)   # Mint      #22D08A
+const GREEN_D  := Color(0.078, 0.580, 0.376)   # Mint deep (derived)
+const GOLD     := Color(1.000, 0.784, 0.220)   # Gold      #FFC838
+const GOLD_D   := Color(0.804, 0.612, 0.071)   # Gold deep (derived)
+const CYAN     := Color(0.227, 0.839, 0.941)   # Cyan      #3AD6F0
+const VIOLET   := Color(0.608, 0.420, 1.000)   # Violet    #9B6BFF
+const PRESTIGE := Color(0.608, 0.420, 1.000)   # Prestige  (== Violet)
+const ORANGE   := Color(1.000, 0.478, 0.180)   # Orange    #FF7A2E
+const RED      := Color(1.000, 0.353, 0.373)   # Coral     #FF5A5F
+const PINK     := Color(1.000, 0.435, 0.710)   # Magenta   #FF6FB5
+
+# ── premium-depth constants ───────────────────────────────────────────────────
+const SHADOW   := Color(0.039, 0.059, 0.118)   # Shadow Navy #0A0F1E (never pure black)
+const GLOSS    := Color(1.0, 1.0, 1.0, 0.16)   # top-edge highlight layer (fx shimmer ref)
+const AMBER    := Color(0.961, 0.651, 0.137)   # Amber #F5A623 (cargo / value family)
+
+# ── corner-radius scale (single source of truth) ──────────────────────────────
+const R_CHIP   := 12
+const R_BTN    := 14
+const R_CARD   := 18
+const R_POPUP  := 24
+
+# ── type ramp (expose so labels stop using ad-hoc sizes) ──────────────────────
+const FS_DISPLAY := 32
+const FS_H1      := 24
+const FS_H2      := 20
+const FS_BODY    := 16
+const FS_CAPTION := 13
+
+# ── category → color map (single source of truth so the palette never drifts) ─
+const CAT := {
+	"fleet":   ACCENT,
+	"cities":  CYAN,
+	"talents": VIOLET,
+	"value":   AMBER,
+	"cargo":   AMBER,
+	"shop":    CYAN,
+	"money":   GOLD,
+	"events":  ORANGE,
+}
+
+## Resolve a category key to its accent color. Falls back to ACCENT.
+static func cat_color(key: String) -> Color:
+	if CAT.has(key):
+		var c: Color = CAT[key]
+		return c
+	return ACCENT
 
 static func font(weight := "SemiBold") -> FontFile:
 	return load("res://assets/fonts/Poppins-%s.ttf" % weight)
@@ -31,188 +72,320 @@ static func build() -> Theme:
 	t.set_stylebox("normal",   "Button", _btn(ACCENT))
 	t.set_stylebox("hover",    "Button", _btn(ACCENT.lightened(0.10)))
 	t.set_stylebox("pressed",  "Button", _btn(ACCENT_D))
-	t.set_stylebox("disabled", "Button", _btn(Color(0.16, 0.20, 0.32)))
+	t.set_stylebox("disabled", "Button", _btn(PANEL2))
 	t.set_stylebox("focus",    "Button", StyleBoxEmpty.new())
 	t.set_color("font_color",          "Button", Color.WHITE)
 	t.set_color("font_hover_color",    "Button", Color.WHITE)
 	t.set_color("font_pressed_color",  "Button", Color(0.84, 0.90, 1.0))
-	t.set_color("font_disabled_color", "Button", Color(0.36, 0.42, 0.55))
-	t.set_font("font", "Button", font("Bold")); t.set_font_size("font_size", "Button", 24)
-	t.set_stylebox("panel", "PanelContainer", _panel(PANEL, 20))
-	t.set_stylebox("panel", "Panel", _panel(PANEL, 20))
+	t.set_color("font_disabled_color", "Button", MUTED)
+	t.set_font("font", "Button", font("Bold")); t.set_font_size("font_size", "Button", FS_H1)
+	t.set_stylebox("panel", "PanelContainer", _panel(PANEL, R_CARD))
+	t.set_stylebox("panel", "Panel", _panel(PANEL, R_CARD))
 	t.set_color("font_color", "Label", INK)
 	t.set_color("font_color", "CheckButton", INK)
-	t.set_font_size("font_size", "CheckButton", 24)
+	t.set_font_size("font_size", "CheckButton", FS_H1)
 	t.set_stylebox("normal", "CheckButton", StyleBoxEmpty.new())
 	return t
 
 # ── base helpers ─────────────────────────────────────────────────────────────
 
+## Shadow-Navy drop shadow with tunable alpha (premium, never pure black).
+static func _shadow(s: StyleBoxFlat, alpha: float, size: int, off := Vector2(0, 4)) -> void:
+	s.shadow_color = Color(SHADOW.r, SHADOW.g, SHADOW.b, alpha)
+	s.shadow_size = size
+	s.shadow_offset = off
+
+## Colored glow shadow (for emissive / accent elements).
+static func _glow(s: StyleBoxFlat, col: Color, alpha: float, size: int, off := Vector2(0, 4)) -> void:
+	s.shadow_color = Color(col.r, col.g, col.b, alpha)
+	s.shadow_size = size
+	s.shadow_offset = off
+
+## 1px top inner-highlight that fakes consistent top-lighting on a surface.
+static func _top_light(s: StyleBoxFlat, base: Color, amount := 0.22) -> void:
+	s.border_color = base.lightened(amount)
+	s.border_width_top = 1
+
 static func _btn(bg: Color) -> StyleBoxFlat:
-	var s := StyleBoxFlat.new(); s.bg_color = bg; s.set_corner_radius_all(22)
+	var s := StyleBoxFlat.new(); s.bg_color = bg; s.set_corner_radius_all(R_BTN)
 	s.content_margin_left = 18; s.content_margin_right = 18
 	s.content_margin_top = 13; s.content_margin_bottom = 13
-	s.border_color = bg.lightened(0.28); s.border_width_top = 2
-	s.shadow_color = Color(0,0,0,0.45); s.shadow_size = 8; s.shadow_offset = Vector2(0,4)
+	s.border_color = bg.lightened(0.30); s.border_width_top = 2
+	_shadow(s, 0.45, 8)
 	return s
 
 static func _panel(bg: Color, radius: int) -> StyleBoxFlat:
 	var s := StyleBoxFlat.new(); s.bg_color = bg; s.set_corner_radius_all(radius)
-	s.set_content_margin_all(16); s.border_color = BORDER; s.set_border_width_all(1)
-	s.shadow_color = Color(0,0,0,0.35); s.shadow_size = 8; s.shadow_offset = Vector2(0,4)
+	s.set_content_margin_all(16)
+	# Hairline frame + brighter top edge for top-lighting.
+	s.border_color = BORDER; s.set_border_width_all(1)
+	s.border_width_top = 1
+	_shadow(s, 0.38, 8)
+	return s
+
+## Build a vertical 2-stop gradient as a small GradientTexture2D (for TextureRect
+## fills where a StyleBox cannot express a gradient). top -> bottom.
+static func vgrad_tex(c_top: Color, c_bot: Color, height := 64) -> GradientTexture2D:
+	var g := Gradient.new()
+	g.set_color(0, c_top)
+	g.set_color(1, c_bot)
+	var tex := GradientTexture2D.new()
+	tex.gradient = g
+	tex.fill_from = Vector2(0, 0)
+	tex.fill_to = Vector2(0, 1)
+	tex.width = 4
+	tex.height = height
+	return tex
+
+## StyleBoxFlat approximation of a vertical gradient: mid fill + lightened top
+## border (gloss cap) + darkened drop edge. Use where a real gradient isn't
+## available. `radius` defaults to the card scale.
+static func gradient_box(c_top: Color, c_bot: Color, radius := R_CARD) -> StyleBoxFlat:
+	var mid := c_top.lerp(c_bot, 0.5)
+	var s := StyleBoxFlat.new(); s.bg_color = mid; s.set_corner_radius_all(radius)
+	s.set_content_margin_all(12)
+	s.border_color = c_top.lightened(0.10)
+	s.border_width_top = 2
+	s.border_width_left = 0; s.border_width_right = 0; s.border_width_bottom = 0
+	_shadow(s, 0.40, 8)
 	return s
 
 # ── public style functions ────────────────────────────────────────────────────
 
-## Frosted-glass panel (for HUD overlay on the map)
+## Frosted-glass panel (for HUD overlay on the map).
 static func glass() -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()
-	s.bg_color = Color(0.06, 0.09, 0.18, 0.92); s.set_corner_radius_all(22)
-	s.set_content_margin_all(14); s.border_color = Color(0.36, 0.52, 0.74, 0.55); s.set_border_width_all(1)
-	s.shadow_color = Color(0,0,0,0.55); s.shadow_size = 14; s.shadow_offset = Vector2(0,5)
+	s.bg_color = Color(0.078, 0.110, 0.188, 0.82); s.set_corner_radius_all(R_POPUP)
+	s.set_content_margin_all(14)
+	s.border_color = Color(ACCENT.r, ACCENT.g, ACCENT.b, 0.40); s.set_border_width_all(1)
+	# Bright frosted top rim.
+	s.border_color = Color(0.62, 0.74, 1.0, 0.55)
+	s.border_width_top = 1
+	_shadow(s, 0.50, 16, Vector2(0, 6))
 	return s
 
-## Card with accent-tinted background and glowing border
+## Card with accent-tinted background, left category rail and glowing border.
 static func action_card(accent: Color) -> StyleBoxFlat:
-	var base := PANEL2.lerp(accent, 0.10)
-	var s := _panel(base, 18); s.set_content_margin_all(10)
-	s.border_color = lerp(BORDER, accent, 0.60); s.set_border_width_all(1)
-	s.shadow_color = Color(accent.r, accent.g, accent.b, 0.22)
-	s.shadow_size = 10; s.shadow_offset = Vector2(0, 4)
+	var base := PANEL2.lerp(accent, 0.12)
+	var s := StyleBoxFlat.new(); s.bg_color = base; s.set_corner_radius_all(R_CARD)
+	s.set_content_margin_all(12)
+	s.content_margin_left = 14
+	s.border_color = lerp(BORDER, accent, 0.55); s.set_border_width_all(1)
+	# Brighter top edge (top-light) + 3px left accent rail for instant scanning.
+	s.border_width_top = 1
+	s.border_width_left = 3
+	_glow(s, accent, 0.28, 12, Vector2(0, 5))
 	return s
 
-## Full-width action button (buy / unlock)
+## Full-width action button (buy / unlock) with fintech faux-gradient look.
 static func action_btn(color: Color) -> StyleBoxFlat:
-	var s := StyleBoxFlat.new(); s.bg_color = color; s.set_corner_radius_all(14)
+	var s := StyleBoxFlat.new(); s.bg_color = color; s.set_corner_radius_all(R_BTN)
 	s.content_margin_left = 12; s.content_margin_right = 12
-	s.content_margin_top = 11; s.content_margin_bottom = 11
-	s.border_color = color.lightened(0.32); s.border_width_top = 2
-	s.shadow_color = Color(color.r, color.g, color.b, 0.42)
-	s.shadow_size = 8; s.shadow_offset = Vector2(0, 4)
+	s.content_margin_top = 12; s.content_margin_bottom = 12
+	# Lighter top border + darker base edge = vertical-gradient illusion.
+	s.border_color = color.lightened(0.34); s.border_width_top = 2
+	_glow(s, color, 0.42, 10, Vector2(0, 4))
 	return s
 
+## "Buyable now" variant: brighter rim + stronger colored bloom to pull the eye.
+static func action_btn_affordable(color: Color) -> StyleBoxFlat:
+	var s := action_btn(color)
+	s.bg_color = color.lightened(0.06)
+	s.border_color = color.lightened(0.45); s.border_width_top = 2
+	_glow(s, color, 0.55, 16, Vector2(0, 4))
+	return s
+
+## Disabled buy button: keep cost legible (dim panel + muted text upstream).
 static func action_btn_disabled() -> StyleBoxFlat:
-	var s := StyleBoxFlat.new(); s.bg_color = Color(0.14, 0.18, 0.30); s.set_corner_radius_all(14)
+	var s := StyleBoxFlat.new(); s.bg_color = PANEL2.darkened(0.12); s.set_corner_radius_all(R_BTN)
 	s.content_margin_left = 12; s.content_margin_right = 12
-	s.content_margin_top = 11; s.content_margin_bottom = 11
+	s.content_margin_top = 12; s.content_margin_bottom = 12
+	s.border_color = BORDER; s.set_border_width_all(1)
+	_shadow(s, 0.25, 4)
 	return s
 
-## Segmented control button (x1 / x10 / x100 / Max)
+## Segmented control button (x1 / x10 / x100 / Max).
 static func seg(active: bool) -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()
-	s.bg_color = ACCENT if active else Color(0.13, 0.17, 0.28); s.set_corner_radius_all(14)
+	s.bg_color = ACCENT if active else PANEL2; s.set_corner_radius_all(R_BTN)
 	s.content_margin_left = 10; s.content_margin_right = 10
 	s.content_margin_top = 11; s.content_margin_bottom = 11
-	if active: s.border_color = ACCENT.lightened(0.32); s.border_width_top = 2
-	s.shadow_color = Color(ACCENT.r, ACCENT.g, ACCENT.b, 0.40 if active else 0.0)
-	s.shadow_size = 8 if active else 0
+	if active:
+		s.border_color = ACCENT.lightened(0.34); s.border_width_top = 2
+		_glow(s, ACCENT, 0.42, 10)
+	else:
+		s.border_color = BORDER; s.set_border_width_all(1)
 	return s
 
-## Bottom-panel background (rounded top, flat bottom)
+## Bottom-panel background (rounded top, flat bottom).
 static func bottom_panel() -> StyleBoxFlat:
-	var s := StyleBoxFlat.new(); s.bg_color = Color(0.09, 0.12, 0.22)
-	s.corner_radius_top_left = 28; s.corner_radius_top_right = 28
-	s.set_content_margin_all(0); s.border_color = BORDER; s.border_width_top = 1
-	s.shadow_color = Color(0,0,0,0.50); s.shadow_size = 16; s.shadow_offset = Vector2(0,-6)
+	var s := StyleBoxFlat.new(); s.bg_color = BG1
+	s.corner_radius_top_left = R_POPUP; s.corner_radius_top_right = R_POPUP
+	s.set_content_margin_all(0)
+	s.border_color = BORDER; s.border_width_top = 1
+	# Shadow casts upward (nav floats above content).
+	_shadow(s, 0.50, 18, Vector2(0, -6))
 	return s
 
-## Nav bar item – active or inactive
+## Nav bar item – active or inactive.
 static func nav_item(active: bool) -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()
-	s.bg_color = Color(ACCENT.r, ACCENT.g, ACCENT.b, 0.22 if active else 0.0)
-	s.set_corner_radius_all(20); s.set_content_margin_all(6)
+	s.bg_color = Color(ACCENT.r, ACCENT.g, ACCENT.b, 0.20 if active else 0.0)
+	s.set_corner_radius_all(R_CARD); s.set_content_margin_all(6)
+	if active:
+		s.border_color = Color(ACCENT.r, ACCENT.g, ACCENT.b, 0.45)
+		s.border_width_top = 1
+		_glow(s, ACCENT, 0.30, 10, Vector2(0, 2))
 	return s
 
-## Ad / rewarded pill button
+## Ad / rewarded pill button.
 static func ad_btn() -> StyleBoxFlat:
-	var s := StyleBoxFlat.new(); s.bg_color = Color(0.08, 0.44, 0.24); s.set_corner_radius_all(16)
+	var s := StyleBoxFlat.new(); s.bg_color = GREEN_D.darkened(0.18); s.set_corner_radius_all(R_BTN)
 	s.content_margin_left = 14; s.content_margin_right = 14
 	s.content_margin_top = 10; s.content_margin_bottom = 10
-	s.border_color = GREEN.lightened(0.30); s.border_width_top = 1
-	s.shadow_color = Color(0,0.35,0.18,0.40); s.shadow_size = 6; s.shadow_offset = Vector2(0,3)
+	s.border_color = GREEN.lightened(0.32); s.border_width_top = 2
+	_glow(s, GREEN, 0.42, 8, Vector2(0, 3))
 	return s
 
-## Generic solid colour box (popups, badges, etc.)
-static func solid(bg: Color, radius := 16) -> StyleBoxFlat:
+## Generic solid colour box (popups, badges, etc.).
+static func solid(bg: Color, radius := R_BTN) -> StyleBoxFlat:
 	var s := StyleBoxFlat.new(); s.bg_color = bg; s.set_corner_radius_all(radius)
 	s.content_margin_left = 14; s.content_margin_right = 14
 	s.content_margin_top = 10; s.content_margin_bottom = 10
-	s.border_color = bg.lightened(0.24); s.border_width_top = 2
-	s.shadow_color = Color(0,0,0,0.32); s.shadow_size = 5; s.shadow_offset = Vector2(0,3)
+	s.border_color = bg.lightened(0.26); s.border_width_top = 2
+	_shadow(s, 0.32, 5, Vector2(0, 3))
 	return s
 
-## Kept for compat (aliases action_card)
+## Kept for compat (aliases action_card).
 static func card(accent: Color) -> StyleBoxFlat: return action_card(accent)
 
-## Kept for compat
+## Kept for compat — glossy full-radius pill.
 static func pill(bg := PANEL) -> StyleBoxFlat:
-	var s := StyleBoxFlat.new(); s.bg_color = bg; s.set_corner_radius_all(24)
+	var s := StyleBoxFlat.new(); s.bg_color = bg; s.set_corner_radius_all(R_POPUP)
 	s.content_margin_left = 14; s.content_margin_right = 16
 	s.content_margin_top = 8; s.content_margin_bottom = 8
 	s.border_color = BORDER; s.set_border_width_all(1)
+	# 1px white top-rim = glossy pill highlight.
+	s.border_color = Color(1.0, 1.0, 1.0, 0.10)
+	s.border_width_top = 1
 	return s
 
-## Prestige shop / prestige info card
+## Glossy HUD stat chip: 1px white top-rim, subtle navy drop.
+static func stat_chip(accent := ACCENT) -> StyleBoxFlat:
+	var s := StyleBoxFlat.new(); s.bg_color = PANEL2; s.set_corner_radius_all(R_CHIP)
+	s.content_margin_left = 12; s.content_margin_right = 12
+	s.content_margin_top = 7; s.content_margin_bottom = 7
+	s.border_color = Color(1.0, 1.0, 1.0, 0.12); s.border_width_top = 1
+	_glow(s, accent, 0.16, 6, Vector2(0, 3))
+	return s
+
+## Toast: glass body + left accent border + accent leading glow.
+static func toast(accent := ACCENT) -> StyleBoxFlat:
+	var s := StyleBoxFlat.new()
+	s.bg_color = Color(0.102, 0.141, 0.251, 0.94); s.set_corner_radius_all(R_BTN)
+	s.set_content_margin_all(14)
+	s.content_margin_left = 16
+	s.border_color = accent; s.border_width_left = 4
+	s.border_width_top = 1
+	_glow(s, accent, 0.30, 14, Vector2(0, 4))
+	return s
+
+## Popup / holo-frame: raised body, glowing accent top-border, navy bloom
+## (instead of flat black) so popups read as lit holo surfaces.
+static func popup_frame(accent := ACCENT) -> StyleBoxFlat:
+	var s := StyleBoxFlat.new(); s.bg_color = PANEL2; s.set_corner_radius_all(R_POPUP)
+	s.set_content_margin_all(18)
+	s.border_color = BORDER; s.set_border_width_all(1)
+	# Glowing accent top-border.
+	s.border_color = Color(accent.r, accent.g, accent.b, 0.65)
+	s.border_width_top = 2
+	_glow(s, accent, 0.28, 22, Vector2(0, 6))
+	return s
+
+## Uppercase letter-spaced section header rule background (thin hairline divider).
+static func section_rule() -> StyleBoxFlat:
+	var s := StyleBoxFlat.new(); s.bg_color = BORDER
+	s.set_corner_radius_all(2)
+	s.content_margin_top = 1; s.content_margin_bottom = 1
+	return s
+
+## Prestige shop / prestige info card — violet rim + faint star-field tone.
 static func prestige_card() -> StyleBoxFlat:
-	var s := _panel(Color(0.16, 0.10, 0.26), 18); s.set_content_margin_all(12)
+	var base := PANEL2.lerp(VIOLET, 0.16)
+	var s := StyleBoxFlat.new(); s.bg_color = base; s.set_corner_radius_all(R_CARD)
+	s.set_content_margin_all(12)
 	s.border_color = Color(PRESTIGE.r, PRESTIGE.g, PRESTIGE.b, 0.60); s.set_border_width_all(1)
-	s.shadow_color = Color(PRESTIGE.r, PRESTIGE.g, PRESTIGE.b, 0.25)
-	s.shadow_size = 10; s.shadow_offset = Vector2(0, 4)
+	s.border_width_top = 1
+	_glow(s, PRESTIGE, 0.28, 12, Vector2(0, 5))
 	return s
 
-## Event banner (colored left border)
+## Event banner (colored left border + tinted glass).
 static func event_banner(col: Color) -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()
-	s.bg_color = Color(col.r, col.g, col.b, 0.18); s.set_corner_radius_all(14)
+	s.bg_color = Color(col.r, col.g, col.b, 0.16); s.set_corner_radius_all(R_BTN)
 	s.set_content_margin_all(12)
+	s.content_margin_left = 14
 	s.border_color = col; s.border_width_left = 4
+	s.border_width_top = 1
+	s.border_color = col
+	_glow(s, col, 0.22, 10, Vector2(0, 3))
 	return s
 
-## Achievement card
+## Achievement card.
 static func achievement_card(done: bool) -> StyleBoxFlat:
-	var bg := Color(0.12, 0.16, 0.28) if not done else Color(0.08, 0.22, 0.14)
-	var s := _panel(bg, 14); s.set_content_margin_all(10)
+	var bg := PANEL2 if not done else PANEL2.lerp(GREEN, 0.16)
+	var s := _panel(bg, R_BTN); s.set_content_margin_all(10)
 	if done:
 		s.border_color = Color(GREEN.r, GREEN.g, GREEN.b, 0.55); s.set_border_width_all(1)
+		s.border_width_top = 1
+		_glow(s, GREEN, 0.20, 8, Vector2(0, 3))
+	else:
+		s.border_color = BORDER; s.set_border_width_all(1)
 	return s
 
-## Progress bar background
+## Progress bar background (trough).
 static func prog_bg() -> StyleBoxFlat:
-	var s := StyleBoxFlat.new(); s.bg_color = Color(0.12, 0.16, 0.28); s.set_corner_radius_all(6)
+	var s := StyleBoxFlat.new(); s.bg_color = PANEL.darkened(0.10); s.set_corner_radius_all(R_CHIP)
+	s.border_color = BORDER; s.set_border_width_all(1)
 	return s
 
-## Progress bar fill (colour = accent/green/gold based on context)
+## Progress bar fill (colour = accent/green/gold based on context).
 static func prog_fill(col: Color) -> StyleBoxFlat:
-	var s := StyleBoxFlat.new(); s.bg_color = col; s.set_corner_radius_all(6)
-	s.shadow_color = Color(col.r, col.g, col.b, 0.45); s.shadow_size = 4
+	var s := StyleBoxFlat.new(); s.bg_color = col; s.set_corner_radius_all(R_CHIP)
+	s.border_color = col.lightened(0.30); s.border_width_top = 1
+	_glow(s, col, 0.45, 6, Vector2(0, 0))
 	return s
 
-## Daily reward card
+## Daily reward card.
 static func daily_card(claimed: bool, current: bool) -> StyleBoxFlat:
 	var bg: Color
-	if claimed:   bg = Color(0.08, 0.22, 0.14)
-	elif current: bg = Color(0.20, 0.16, 0.06)
-	else:         bg = PANEL
-	var s := _panel(bg, 14); s.set_content_margin_all(8)
+	if claimed:   bg = PANEL2.lerp(GREEN, 0.16)
+	elif current: bg = PANEL2.lerp(GOLD, 0.18)
+	else:         bg = PANEL2
+	var s := _panel(bg, R_BTN); s.set_content_margin_all(8)
 	if current:
 		s.border_color = GOLD; s.set_border_width_all(2)
-		s.shadow_color = Color(GOLD.r, GOLD.g, GOLD.b, 0.40); s.shadow_size = 8
+		_glow(s, GOLD, 0.45, 12, Vector2(0, 4))
+	elif claimed:
+		s.border_color = Color(GREEN.r, GREEN.g, GREEN.b, 0.45); s.set_border_width_all(1)
+	else:
+		s.border_color = BORDER; s.set_border_width_all(1)
 	return s
 
-## Danger / destructive button (prestige confirm, wipe)
+## Danger / destructive button (prestige confirm, wipe).
 static func danger_btn() -> StyleBoxFlat:
-	var s := StyleBoxFlat.new(); s.bg_color = Color(0.55, 0.10, 0.14); s.set_corner_radius_all(14)
+	var s := StyleBoxFlat.new(); s.bg_color = RED.darkened(0.38); s.set_corner_radius_all(R_BTN)
 	s.content_margin_left = 16; s.content_margin_right = 16
 	s.content_margin_top = 12; s.content_margin_bottom = 12
-	s.border_color = RED.lightened(0.20); s.border_width_top = 2
-	s.shadow_color = Color(RED.r, RED.g, RED.b, 0.40); s.shadow_size = 8; s.shadow_offset = Vector2(0, 4)
+	s.border_color = RED.lightened(0.22); s.border_width_top = 2
+	_glow(s, RED, 0.42, 10, Vector2(0, 4))
 	return s
 
-## Glowing "ready to prestige" button
+## Glowing "ready to prestige" button (gets shimmer + breathe from fx).
 static func prestige_btn_ready() -> StyleBoxFlat:
-	var s := StyleBoxFlat.new(); s.bg_color = Color(0.42, 0.18, 0.62); s.set_corner_radius_all(18)
+	var s := StyleBoxFlat.new(); s.bg_color = VIOLET.darkened(0.30); s.set_corner_radius_all(R_CARD)
 	s.content_margin_left = 18; s.content_margin_right = 18
 	s.content_margin_top = 14; s.content_margin_bottom = 14
-	s.border_color = PRESTIGE.lightened(0.25); s.border_width_top = 2
-	s.shadow_color = Color(PRESTIGE.r, PRESTIGE.g, PRESTIGE.b, 0.55); s.shadow_size = 16; s.shadow_offset = Vector2(0, 4)
+	s.border_color = PRESTIGE.lightened(0.28); s.border_width_top = 2
+	_glow(s, PRESTIGE, 0.55, 18, Vector2(0, 4))
 	return s
