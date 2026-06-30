@@ -186,7 +186,6 @@ func expand_country() -> bool:
 	cities_unlocked = 1
 	influence += 3 + int(current_country / 4)
 	influence_total = influence_total + 3 + int(current_country / 4)
-	if Prestige.has_shop("gem_mine"): gems += 1
 	_rebuild_drones()
 	country_changed.emit(current_country)
 	SaveSystem.save_game()

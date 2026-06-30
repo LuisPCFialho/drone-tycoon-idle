@@ -55,7 +55,7 @@ func country_outline(i: int) -> PackedVector2Array:
 		arr.append(Vector2(p[0], p[1]))
 	return arr
 
-const DRONE_RATE := 1.16
+const DRONE_RATE := 1.175
 
 ## Per-country payout scale (delivery value grows ~2.2x per country).
 func pay_tier(i: int) -> float:
@@ -63,9 +63,10 @@ func pay_tier(i: int) -> float:
 
 ## Per-country COST scale — grows MUCH faster than payouts so every country needs
 ## a substantially bigger fleet than the last (escalating, long progression;
-## you cannot rush to the USA — it takes many hours).
+## you cannot rush to the USA — it takes many hours). Steepened in v1.6.3 so
+## advancing country is clearly harder.
 func cost_tier(i: int) -> float:
-	return pow(3.7, float(i))
+	return pow(4.6, float(i))
 
 func upgrade_cost(key: String, level: int) -> float:
 	var u: Dictionary = UPGRADES[key]
@@ -76,11 +77,12 @@ func drone_cost(count: int) -> float:
 
 ## Cost to unlock the n-th delivery city in a country (n = number already active).
 func city_unlock_cost(country_idx: int, n: int) -> float:
-	return 200.0 * pow(2.1, float(n)) * cost_tier(country_idx)
+	return 320.0 * pow(2.3, float(n)) * cost_tier(country_idx)
 
 ## Cost to expand to the next country (available once all cities are unlocked).
+## Big upfront gate so jumping country is a real milestone, not a quick hop.
 func expand_cost(country_idx: int) -> float:
-	return 25000.0 * cost_tier(country_idx)
+	return 80000.0 * cost_tier(country_idx)
 
 func talent_cost(level: int) -> int:
 	return int(ceil(pow(1.7, float(level))))

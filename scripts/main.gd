@@ -1,5 +1,5 @@
 extends Control
-## Main scene — Drone Tycoon: Sky Fleet  v1.6.2 (Aurora Logistics visual overhaul)
+## Main scene — Drone Tycoon: Sky Fleet  v1.6.3 (Aurora Logistics visual overhaul)
 
 const NAV_H  := 132.0
 const TABS_H := 532.0
@@ -21,13 +21,11 @@ var _toasts: VBoxContainer
 var _credits_lbl: Label
 var _gems_lbl: Label
 var _infl_lbl: Label
-var _pgems_lbl: Label
 var _income_lbl: Label
 var _country_lbl: Label
 var _credits_chip: Control
 var _gems_chip: Control
 var _infl_chip: Control
-var _pgems_chip: Control
 var _vip_badge: PanelContainer
 var _event_row: HBoxContainer
 var _event_icon: TextureRect
@@ -38,7 +36,6 @@ var _disp_credits := 0.0
 
 # previous values for chip-pop detection
 var _prev_gems := 0
-var _prev_pgems := 0
 var _prev_infl := 0
 
 # Tab widgets
@@ -57,14 +54,15 @@ var _prestige_btn: Button
 var _prestige_info_lbl: Label
 var _achieve_cells := {}
 var _prestige_ready_prev := false
+var _tap_block_until := 0   # ms; drag-scroll guard so dragging never buys
 
 func _ready() -> void:
 	if OS.has_feature("mobile"):
 		DisplayServer.screen_set_orientation(DisplayServer.SCREEN_PORTRAIT)
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	theme = UITheme.build()
-	_bg(); _build_map(); _build_hud(); _build_adbar()
-	_build_bottom_bg(); _build_pages(); _build_nav(); _build_toasts()
+	_bg(); _build_map(); _build_hud()
+	_build_bottom_bg(); _build_adbar(); _build_pages(); _build_nav(); _build_toasts()
 
 	GameState.city_unlocked.connect(_on_city_unlocked)
 	GameState.country_changed.connect(_on_country_changed)
@@ -76,7 +74,7 @@ func _ready() -> void:
 
 	var loaded := SaveSystem.load_game()
 	_disp_credits = GameState.credits
-	_prev_gems = GameState.gems; _prev_pgems = Prestige.pgems; _prev_infl = GameState.influence
+	_prev_gems = GameState.gems; _prev_infl = GameState.influence
 	if loaded and GameState.pending_offline > 1.0:
 		_show_offline_popup(GameState.pending_offline, GameState.pending_offline_seconds)
 	elif Daily.pending:
@@ -127,7 +125,6 @@ func _build_hud() -> void:
 	var c1 := _chip("ic_credits", UITheme.GOLD, 25); _credits_lbl = c1["label"]; _credits_chip = c1["root"]; r1.add_child(c1["root"])
 	var c2 := _chip("ic_gems", UITheme.CYAN, 22); _gems_lbl = c2["label"]; _gems_chip = c2["root"]; r1.add_child(c2["root"])
 	var c3 := _chip("ic_prestige", UITheme.VIOLET, 21); _infl_lbl = c3["label"]; _infl_chip = c3["root"]; r1.add_child(c3["root"])
-	var c4 := _chip("ic_prestige", UITheme.PRESTIGE, 21); _pgems_lbl = c4["label"]; _pgems_chip = c4["root"]; r1.add_child(c4["root"])
 	_vip_badge = PanelContainer.new(); _vip_badge.add_theme_stylebox_override("panel", UITheme.solid(UITheme.GOLD, 14))
 	var vb := HBoxContainer.new(); vb.add_theme_constant_override("separation", 3); _vip_badge.add_child(vb)
 	vb.add_child(_icon("ic_vip", 18))
@@ -247,16 +244,32 @@ func _build_pages() -> void:
 	for pg in _pages:
 		add_child(pg)
 		_make_scrollable(pg)
+		(pg as ScrollContainer).gui_input.connect(_on_scroll_gui_input)
 
-## Make the whole card surface draggable to scroll: every non-button Control
-## becomes MOUSE_FILTER_IGNORE so touch-drags reach the ScrollContainer (Godot
-## only scrolls where the drag is NOT consumed by a STOP control). Buttons keep
-## STOP so taps still register.
+## Make the WHOLE card surface drag-scrollable. Buttons → PASS (so drags over
+## them still bubble to the ScrollContainer for scrolling) but guarded by
+## _can_tap() so a drag never triggers a purchase. Everything else → IGNORE.
 func _make_scrollable(n: Node) -> void:
 	for child in n.get_children():
-		if child is Control and not (child is BaseButton):
+		if child is BaseButton:
+			(child as Control).mouse_filter = Control.MOUSE_FILTER_PASS
+		elif child is Control:
 			(child as Control).mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_make_scrollable(child)
+
+## Detect a scroll drag and block taps briefly so dragging over a button never
+## fires it. Built-in ScrollContainer handles the actual scrolling.
+func _on_scroll_gui_input(event: InputEvent) -> void:
+	if event is InputEventScreenDrag:
+		if absf((event as InputEventScreenDrag).relative.y) > 1.5:
+			_tap_block_until = Time.get_ticks_msec() + 160
+	elif event is InputEventMouseMotion:
+		var mm := event as InputEventMouseMotion
+		if (mm.button_mask & MOUSE_BUTTON_MASK_LEFT) != 0 and absf(mm.relative.y) > 1.5:
+			_tap_block_until = Time.get_ticks_msec() + 160
+
+func _can_tap() -> bool:
+	return Time.get_ticks_msec() >= _tap_block_until
 
 # ── Nav bar ─────────────────────────────────────────────────────────────────────
 
@@ -389,22 +402,19 @@ func _build_fleet_tab() -> ScrollContainer:
 		b.pressed.connect(func(): GameState.buy_mode = mode_val; Fx.press(b))
 		seg_row.add_child(b); _mode_btns[mode_val] = b
 
-	var dp := _card(UITheme.ACCENT)
-	var dv := VBoxContainer.new(); dv.add_theme_constant_override("separation", 8); dp.add_child(dv)
-	var dh := HBoxContainer.new(); dh.add_theme_constant_override("separation", 10); dv.add_child(dh)
-	dh.add_child(_icon("ic_drone", 36))
-	var dl := VBoxContainer.new(); dl.size_flags_horizontal = Control.SIZE_EXPAND_FILL; dh.add_child(dl)
-	dl.add_child(_lbl("Comprar Drones", 20, UITheme.INK))
-	_drone_detail = _lbl("", 15, UITheme.MUTED); dl.add_child(_drone_detail)
-	_drone_btn = _buy_btn(UITheme.GREEN)
+	var dr := _row(UITheme.ACCENT, "ic_drone")
+	dr["title"].text = "Comprar Drones"
+	_drone_detail = dr["detail"]
+	_drone_btn = _cbuy(UITheme.GREEN, 160.0)
 	_drone_btn.pressed.connect(func():
+		if not _can_tap(): return
 		if GameState.buy_drones() > 0:
 			Fx.press(_drone_btn); Audio.play("buy")
 			_reward_fx(_drone_btn, UITheme.ACCENT, "spark", 8)
 		else:
 			Fx.error_shake(_drone_btn)
 	)
-	dv.add_child(_drone_btn); v.add_child(dp)
+	dr["right"].add_child(_drone_btn); v.add_child(dr["card"])
 
 	for key: String in ["speed", "cargo", "value"]:
 		v.add_child(_make_upgrade_row(key))
@@ -424,7 +434,10 @@ func _build_fleet_tab() -> ScrollContainer:
 	_prestige_btn.add_theme_stylebox_override("pressed",  UITheme.prestige_card())
 	_prestige_btn.add_theme_stylebox_override("disabled", UITheme.action_btn_disabled())
 	_prestige_btn.add_theme_stylebox_override("focus",    StyleBoxEmpty.new())
-	_prestige_btn.pressed.connect(func(): Fx.press(_prestige_btn); _show_prestige_confirm())
+	_prestige_btn.pressed.connect(func():
+		if not _can_tap(): return
+		Fx.press(_prestige_btn); _show_prestige_confirm()
+	)
 	pv.add_child(_prestige_btn)
 	return r[0]
 
@@ -435,33 +448,29 @@ func _build_cities_tab() -> ScrollContainer:
 	_progress_lbl = _lbl("", 17, UITheme.MUTED)
 	_progress_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; v.add_child(_progress_lbl)
 
-	var cp := _card(UITheme.CYAN)
-	var cv := VBoxContainer.new(); cv.add_theme_constant_override("separation", 8); cp.add_child(cv)
-	var ch := HBoxContainer.new(); ch.add_theme_constant_override("separation", 10); cv.add_child(ch)
-	ch.add_child(_icon("ic_range", 36))
-	var cl := VBoxContainer.new(); cl.size_flags_horizontal = Control.SIZE_EXPAND_FILL; ch.add_child(cl)
-	cl.add_child(_lbl("Abrir Cidade", 20, UITheme.INK))
-	_city_detail = _lbl("", 15, UITheme.MUTED); _city_detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; cl.add_child(_city_detail)
-	_city_btn = _buy_btn(UITheme.CYAN.darkened(0.10))
+	var cr := _row(UITheme.CYAN, "ic_range")
+	cr["title"].text = "Abrir Cidade"
+	cr["detail"].autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_city_detail = cr["detail"]
+	_city_btn = _cbuy(UITheme.CYAN.darkened(0.10), 150.0)
 	_city_btn.pressed.connect(func():
+		if not _can_tap(): return
 		if GameState.unlock_city(): Fx.press(_city_btn); Audio.play("buy")
 		else: Fx.error_shake(_city_btn)
 	)
-	cv.add_child(_city_btn); v.add_child(cp)
+	cr["right"].add_child(_city_btn); v.add_child(cr["card"])
 
-	var ep := _card(UITheme.GOLD)
-	var ev2 := VBoxContainer.new(); ev2.add_theme_constant_override("separation", 8); ep.add_child(ev2)
-	var eh := HBoxContainer.new(); eh.add_theme_constant_override("separation", 10); ev2.add_child(eh)
-	eh.add_child(_icon("ic_city", 36))
-	var el := VBoxContainer.new(); el.size_flags_horizontal = Control.SIZE_EXPAND_FILL; eh.add_child(el)
-	el.add_child(_lbl("Expandir para o próximo país", 20, UITheme.INK))
-	_expand_detail = _lbl("", 15, UITheme.MUTED); _expand_detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; el.add_child(_expand_detail)
-	_expand_btn = _buy_btn(UITheme.GOLD.darkened(0.08))
+	var er := _row(UITheme.GOLD, "ic_city")
+	er["title"].text = "Expandir país"
+	er["detail"].autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_expand_detail = er["detail"]
+	_expand_btn = _cbuy(UITheme.GOLD.darkened(0.08), 150.0)
 	_expand_btn.pressed.connect(func():
+		if not _can_tap(): return
 		if GameState.expand_country(): Fx.press(_expand_btn); Audio.play("buy")
 		else: Fx.error_shake(_expand_btn)
 	)
-	ev2.add_child(_expand_btn); v.add_child(ep)
+	er["right"].add_child(_expand_btn); v.add_child(er["card"])
 	return r[0]
 
 # ── Talents tab ─────────────────────────────────────────────────────────────────
@@ -510,6 +519,7 @@ func _make_prestige_shop_row(id: String) -> PanelContainer:
 	pb.add_theme_stylebox_override("disabled", UITheme.action_btn_disabled())
 	pb.add_theme_stylebox_override("focus",    StyleBoxEmpty.new())
 	pb.pressed.connect(func():
+		if not _can_tap(): return
 		if Prestige.buy_shop(id):
 			Fx.press(pb); Audio.play("buy"); _reward_fx(pb, UITheme.PRESTIGE, "gem", 8)
 			pb.text = "Obtido"; pb.icon = _opt_tex("ic_check"); pb.disabled = true
@@ -535,10 +545,6 @@ func _make_achievement_row(id: String) -> PanelContainer:
 	name_lbl.add_theme_font_override("font", UITheme.font("Bold")); pv.add_child(name_lbl)
 	var desc_lbl := _lbl("Conquista secreta." if secret else str(def["desc"]), 14, UITheme.MUTED)
 	desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; pv.add_child(desc_lbl)
-	if int(def.get("gems", 0)) > 0:
-		var rb := HBoxContainer.new(); rb.add_theme_constant_override("separation", 2); ph.add_child(rb)
-		rb.add_child(_lbl("+%d" % int(def["gems"]), 14, UITheme.CYAN))
-		rb.add_child(_icon("ic_gems", 16))
 	if done:
 		ph.add_child(_icon("ic_check", 26))
 	_achieve_cells[id] = pp
@@ -604,71 +610,90 @@ func _afford(b: Button, affordable: bool) -> void:
 	var sb: StyleBox = b.get_meta("sb_a") if affordable else b.get_meta("sb_n")
 	b.add_theme_stylebox_override("normal", sb)
 
+## Compact horizontal purchase row: [icon] [title+detail] [buy button].
+## Returns {card, title, detail, right(HBox for the action button)}.
+func _row(accent: Color, icon_name: String) -> Dictionary:
+	var card := _card(accent)
+	var h := HBoxContainer.new(); h.add_theme_constant_override("separation", 10)
+	card.add_child(h)
+	h.add_child(_icon(icon_name, 32))
+	var info := VBoxContainer.new(); info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	info.size_flags_vertical = Control.SIZE_SHRINK_CENTER; info.add_theme_constant_override("separation", 1)
+	h.add_child(info)
+	var title := _lbl("", 18, UITheme.INK); info.add_child(title)
+	var detail := _lbl("", 13, UITheme.MUTED); info.add_child(detail)
+	var right := HBoxContainer.new(); right.alignment = BoxContainer.ALIGNMENT_END
+	right.size_flags_vertical = Control.SIZE_SHRINK_CENTER; h.add_child(right)
+	return {"card": card, "title": title, "detail": detail, "right": right}
+
+## Compact fixed-width buy button (right-aligned in a row).
+func _cbuy(color: Color, w := 150.0) -> Button:
+	var b := _buy_btn(color)
+	b.size_flags_horizontal = Control.SIZE_SHRINK_END
+	b.custom_minimum_size = Vector2(w, 54)
+	b.add_theme_font_size_override("font_size", 19)
+	return b
+
 func _make_upgrade_row(key: String) -> PanelContainer:
 	var accent_map := {"speed": UITheme.ACCENT, "cargo": UITheme.AMBER, "value": UITheme.GREEN}
 	var accent: Color = accent_map.get(key, UITheme.ACCENT)
-	var panel := _card(accent)
-	var v := VBoxContainer.new(); v.add_theme_constant_override("separation", 8); panel.add_child(v)
-	var h := HBoxContainer.new(); h.add_theme_constant_override("separation", 10); v.add_child(h)
-	h.add_child(_icon(Economy.UPGRADES[key].get("icon", "ic_speed"), 36))
-	var info := VBoxContainer.new(); info.size_flags_horizontal = Control.SIZE_EXPAND_FILL; h.add_child(info)
-	info.add_child(_lbl(Economy.UPGRADES[key]["name"], 20, UITheme.INK))
-	var detail := _lbl("", 15, UITheme.MUTED); info.add_child(detail)
-	var btn := _buy_btn(UITheme.GREEN)
+	var r := _row(accent, Economy.UPGRADES[key].get("icon", "ic_speed"))
+	r["title"].text = Economy.UPGRADES[key]["name"]
+	var btn := _cbuy(UITheme.GREEN)
 	btn.pressed.connect(func():
+		if not _can_tap(): return
 		if GameState.buy_upgrade_multi(key) > 0:
 			Fx.press(btn); Audio.play("buy"); _reward_fx(btn, accent, "spark", 6)
 		else:
 			Fx.error_shake(btn)
 	)
-	v.add_child(btn); _rows[key] = {"btn": btn, "detail": detail}; return panel
+	r["right"].add_child(btn)
+	_rows[key] = {"btn": btn, "detail": r["detail"]}
+	return r["card"]
 
 func _make_talent_row(key: String) -> PanelContainer:
 	var p: Dictionary = Economy.TALENTS[key]
-	var panel := _card(UITheme.VIOLET)
-	var v := VBoxContainer.new(); v.add_theme_constant_override("separation", 8); panel.add_child(v)
-	var h := HBoxContainer.new(); h.add_theme_constant_override("separation", 10); v.add_child(h)
-	h.add_child(_icon(p.get("icon", "ic_prestige"), 36))
-	var info := VBoxContainer.new(); info.size_flags_horizontal = Control.SIZE_EXPAND_FILL; h.add_child(info)
-	info.add_child(_lbl(p["name"], 20, UITheme.INK))
-	var detail := _lbl("", 15, UITheme.MUTED); info.add_child(detail)
-	var btn := _buy_btn(UITheme.VIOLET.darkened(0.10))
+	var r := _row(UITheme.VIOLET, p.get("icon", "ic_prestige"))
+	r["title"].text = p["name"]
+	var btn := _cbuy(UITheme.VIOLET.darkened(0.10), 120.0)
 	btn.pressed.connect(func():
+		if not _can_tap(): return
 		if GameState.buy_talent(key):
 			Fx.press(btn); Audio.play("buy"); _reward_fx(btn, UITheme.VIOLET, "gem", 6)
 		else:
 			Fx.error_shake(btn)
 	)
-	v.add_child(btn); _talent_rows[key] = {"btn": btn, "detail": detail}; return panel
+	r["right"].add_child(btn)
+	_talent_rows[key] = {"btn": btn, "detail": r["detail"]}
+	return r["card"]
 
 func _make_gem_row(id: String) -> PanelContainer:
 	var p: Dictionary = Economy.GEM_SHOP[id]
-	var panel := _card(UITheme.CYAN)
-	var v := VBoxContainer.new(); v.add_theme_constant_override("separation", 8); panel.add_child(v)
-	var h := HBoxContainer.new(); h.add_theme_constant_override("separation", 10); v.add_child(h)
-	h.add_child(_icon(p.get("icon", "ic_gems"), 36))
-	var info := VBoxContainer.new(); info.size_flags_horizontal = Control.SIZE_EXPAND_FILL; h.add_child(info)
-	info.add_child(_lbl(p["name"], 20, UITheme.INK))
-	var dd := _lbl(p["desc"], 15, UITheme.MUTED); dd.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; info.add_child(dd)
-	var btn := _buy_btn(UITheme.CYAN.darkened(0.18))
+	var r := _row(UITheme.CYAN, p.get("icon", "ic_gems"))
+	r["title"].text = p["name"]
+	r["detail"].text = p["desc"]; r["detail"].autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	var btn := _cbuy(UITheme.CYAN.darkened(0.18), 120.0)
 	btn.pressed.connect(func(): _buy_gem(id, btn))
-	v.add_child(btn); _gem_rows[id] = {"btn": btn}; return panel
+	r["right"].add_child(btn)
+	_gem_rows[id] = {"btn": btn}
+	return r["card"]
 
 func _make_iap_row(id: String) -> PanelContainer:
 	var p: Dictionary = Billing.PRODUCTS[id]
-	var panel := _card(UITheme.GOLD)
-	var v := VBoxContainer.new(); v.add_theme_constant_override("separation", 8); panel.add_child(v)
-	var h := HBoxContainer.new(); h.add_theme_constant_override("separation", 10); v.add_child(h)
-	h.add_child(_icon("ic_gems" if id.begins_with("gems") else "ic_boost", 36))
-	var info := VBoxContainer.new(); info.size_flags_horizontal = Control.SIZE_EXPAND_FILL; h.add_child(info)
-	info.add_child(_lbl(p["name"], 20, UITheme.INK))
-	var dd := _lbl(p["desc"], 15, UITheme.MUTED); dd.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; info.add_child(dd)
-	var btn := _wide_btn(UITheme.GOLD.darkened(0.06)); btn.text = p["price"]
+	var r := _row(UITheme.GOLD, "ic_gems" if id.begins_with("gems") else "ic_boost")
+	r["title"].text = p["name"]
+	r["detail"].text = p["desc"]; r["detail"].autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	var btn := _cbuy(UITheme.GOLD.darkened(0.06), 130.0); btn.text = p["price"]
 	btn.add_theme_color_override("font_color", Color(0.12, 0.08, 0.0))
-	btn.pressed.connect(func(): Fx.press(btn); Billing.buy(id); Audio.play("buy"))
-	v.add_child(btn); return panel
+	btn.pressed.connect(func():
+		if not _can_tap(): return
+		Fx.press(btn); Billing.buy(id); Audio.play("buy")
+	)
+	r["right"].add_child(btn)
+	return r["card"]
 
 func _buy_gem(id: String, btn: Button) -> void:
+	if not _can_tap(): return
 	var ok := false
 	var grants_cash := false
 	match id:
@@ -716,14 +741,12 @@ func _process(delta: float) -> void:
 	_credits_lbl.text = Fmt.short(_disp_credits)
 	_gems_lbl.text    = str(GameState.gems)
 	_infl_lbl.text    = str(GameState.influence)
-	_pgems_lbl.text   = str(Prestige.pgems)
 	_vip_badge.visible = Billing.vip
 
 	# chip-pop on discrete currency increases
 	if GameState.gems > _prev_gems: Fx.chip_pop(_gems_chip, UITheme.CYAN)
-	if Prestige.pgems > _prev_pgems: Fx.chip_pop(_pgems_chip, UITheme.PRESTIGE)
 	if GameState.influence > _prev_infl: Fx.chip_pop(_infl_chip, UITheme.VIOLET)
-	_prev_gems = GameState.gems; _prev_pgems = Prestige.pgems; _prev_infl = GameState.influence
+	_prev_gems = GameState.gems; _prev_infl = GameState.influence
 
 	var ips := GameState.income_per_sec()
 	_income_lbl.text = "+" + Fmt.short(ips) + "/s"
@@ -904,7 +927,7 @@ func _on_event_start(id: String) -> void:
 
 func _on_prestige(_count: int) -> void:
 	_disp_credits = 0.0
-	_prev_gems = GameState.gems; _prev_pgems = Prestige.pgems; _prev_infl = GameState.influence
+	_prev_gems = GameState.gems; _prev_infl = GameState.influence
 	_toast("PRESTIGE! Bem-vindo ao recomeço!", UITheme.PRESTIGE, "ic_prestige")
 
 # ── FX helpers ───────────────────────────────────────────────────────────────────
@@ -1020,7 +1043,7 @@ func _show_settings() -> void:
 	restore.pressed.connect(func(): Fx.press(restore); _toast("A verificar compras...", UITheme.ACCENT); SaveSystem.save_game())
 	box.add_child(restore)
 
-	box.add_child(_lbl("Drone Tycoon: Sky Fleet · v1.6.2 · © 2026 LPCF", 15, UITheme.MUTED))
+	box.add_child(_lbl("Drone Tycoon: Sky Fleet · v1.6.3 · © 2026 LPCF", 15, UITheme.MUTED))
 
 	var reset := Button.new(); reset.text = "Repor progresso"
 	reset.add_theme_font_size_override("font_size", 24); reset.add_theme_font_override("font", UITheme.font("Bold"))

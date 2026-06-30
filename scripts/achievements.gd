@@ -165,9 +165,8 @@ func check(id: String, condition: bool) -> void:
     if id in unlocked_ids: return
     if not DEFS.has(id): return
     unlocked_ids.append(id)
-    var reward: int = int(DEFS[id].get("gems", 0))
-    if reward > 0 and has_node("/root/GameState"):
-        GameState.gems += reward
+    # NOTE: achievements no longer grant gems — gems come ONLY from rewarded ads
+    # (and IAP / daily login). Achievements are pure collection/completion now.
     if has_node("/root/Audio"):
         Audio.play("achieve")
     unlocked.emit(id)
