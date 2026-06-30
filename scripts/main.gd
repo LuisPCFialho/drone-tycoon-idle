@@ -1,5 +1,5 @@
 extends Control
-## Main scene — Drone Tycoon: Sky Fleet  v1.6.4 (city costs much higher)
+## Main scene — Drone Tycoon: Sky Fleet  v1.7.0 (UI/UX improvements)
 
 const NAV_H  := 132.0
 const TABS_H := 532.0
@@ -49,6 +49,9 @@ var _city_btn: Button
 var _city_detail: Label
 var _expand_btn: Button
 var _expand_detail: Label
+var _streak_lbl: Label
+var _streak_chip: PanelContainer
+var _city_prog_fill: Panel
 var _progress_lbl: Label
 var _prestige_btn: Button
 var _prestige_info_lbl: Label
@@ -141,11 +144,19 @@ func _build_hud() -> void:
 	gear.add_theme_stylebox_override("focus",  StyleBoxEmpty.new())
 	gear.pressed.connect(func(): Fx.press(gear); _show_settings()); r1.add_child(gear)
 
-	# Row 2: country + income
+	# Row 2: country | streak chip | income
 	var r2 := HBoxContainer.new(); r2.add_theme_constant_override("separation", 6); v.add_child(r2)
 	_country_lbl = Label.new(); _country_lbl.add_theme_font_size_override("font_size", 17)
 	_country_lbl.add_theme_color_override("font_color", UITheme.MUTED)
 	_country_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL; r2.add_child(_country_lbl)
+	_streak_chip = PanelContainer.new()
+	_streak_chip.add_theme_stylebox_override("panel", UITheme.stat_chip(UITheme.AMBER))
+	var sh := HBoxContainer.new(); sh.add_theme_constant_override("separation", 3); _streak_chip.add_child(sh)
+	sh.add_child(_icon("ic_streak", 18))
+	_streak_lbl = Label.new(); _streak_lbl.add_theme_font_size_override("font_size", 15)
+	_streak_lbl.add_theme_color_override("font_color", UITheme.AMBER)
+	_streak_lbl.add_theme_font_override("font", UITheme.font("Bold")); sh.add_child(_streak_lbl)
+	r2.add_child(_streak_chip)
 	_income_lbl = Label.new(); _income_lbl.add_theme_font_size_override("font_size", 21)
 	_income_lbl.add_theme_color_override("font_color", UITheme.GREEN)
 	_income_lbl.add_theme_font_override("font", UITheme.font("Bold"))
@@ -447,6 +458,13 @@ func _build_cities_tab() -> ScrollContainer:
 	var r := _scroll("Cidades"); var v: VBoxContainer = r[1]
 	_progress_lbl = _lbl("", 17, UITheme.MUTED)
 	_progress_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; v.add_child(_progress_lbl)
+	var cpb := Panel.new(); cpb.custom_minimum_size = Vector2(0, 8)
+	cpb.add_theme_stylebox_override("panel", UITheme.prog_bg()); v.add_child(cpb)
+	_city_prog_fill = Panel.new()
+	_city_prog_fill.anchor_left = 0; _city_prog_fill.anchor_right = 0.0
+	_city_prog_fill.anchor_top = 0; _city_prog_fill.anchor_bottom = 1
+	_city_prog_fill.add_theme_stylebox_override("panel", UITheme.prog_fill(UITheme.CYAN))
+	cpb.add_child(_city_prog_fill)
 
 	var cr := _row(UITheme.CYAN, "ic_range")
 	cr["title"].text = "Abrir Cidade"
@@ -752,15 +770,20 @@ func _process(delta: float) -> void:
 	_income_lbl.text = "+" + Fmt.short(ips) + "/s"
 	_income_lbl.add_theme_color_override("font_color", Events.color() if Events.is_active() else UITheme.GREEN)
 
-	_country_lbl.text = "%s · %d/%d  ·  %dd" % [
+	_country_lbl.text = "%s · %d/%d" % [
 		Economy.country_name(GameState.current_country),
-		GameState.current_country + 1, Economy.num_countries(), Daily.streak]
+		GameState.current_country + 1, Economy.num_countries()]
+	_streak_lbl.text = "%dd" % Daily.streak
+	_streak_chip.modulate = UITheme.GOLD if Daily.streak >= 7 else Color.WHITE
 
 	_map.band_top    = _hud.position.y + _hud.size.y + 8.0
 	_map.band_bottom = _adbar.position.y - 8.0
 
-	# progress ribbon: % to next city (or expand if all open)
+	# progress ribbon (HUD): % to next city or expand
 	_ribbon_fill.anchor_right = _unlock_progress()
+	# cities tab progress bar: strictly city unlock progress
+	var _cc := GameState.next_city_cost()
+	_city_prog_fill.anchor_right = clampf(GameState.credits / _cc, 0.0, 1.0) if _cc > 0.0 else 1.0
 
 	if Events.is_active():
 		_event_timer_bar.anchor_right = Events.time_pct()
@@ -906,9 +929,12 @@ func _on_city_unlocked(_i: int) -> void:
 func _on_country_changed(i: int) -> void:
 	_toast("Bem-vindo a " + Economy.country_name(i) + "!", UITheme.GOLD, "ic_city")
 	var c := Vector2(size.x * 0.5, size.y * 0.40)
-	Fx.confetti(self, c, 36, [UITheme.GOLD, UITheme.CYAN, UITheme.GREEN, UITheme.PINK])
-	Fx.screen_flash(self, UITheme.GOLD, 0.14)
-	Fx.screen_shake(_map, 7.0)
+	Fx.confetti(self, c, 48, [UITheme.GOLD, UITheme.CYAN, UITheme.GREEN, UITheme.PINK])
+	Fx.screen_flash(self, UITheme.GOLD, 0.18)
+	Fx.screen_shake(_map, 9.0)
+	Fx.ring_pulse(self, c, UITheme.GOLD, 2.8)
+	Fx.ring_pulse(self, c, UITheme.CYAN, 2.2)
+	Audio.play("milestone")
 
 func _on_achievement(id: String) -> void:
 	var def: Dictionary = Achievements.DEFS.get(id, {})
@@ -941,10 +967,11 @@ func _reward_fx(node: Control, color: Color, kind := "spark", n := 6) -> void:
 
 ## Compact [icon_name, short_text] for a daily reward cell (avoids text wrap).
 func _daily_compact(r: Dictionary) -> Array:
-	if r.has("hours"): return ["ic_cash", "%dh" % int(r["hours"])]
-	if r.has("boost"): return ["ic_boost", "2×"]
-	if r.has("pgems"): return ["ic_prestige", "+%d" % int(r.get("gems", r["pgems"]))]
-	if r.has("gems"):  return ["ic_gems", "+%d" % int(r["gems"])]
+	if r.has("hours"):     return ["ic_cash", "%dh" % int(r["hours"])]
+	if r.has("boost"):     return ["ic_boost", "2×"]
+	if r.has("pgems"):     return ["ic_prestige", "+%d" % int(r.get("gems", r["pgems"]))]
+	if r.has("influence") and not r.has("gems"): return ["ic_prestige", "+%d🌐" % int(r["influence"])]
+	if r.has("gems"):      return ["ic_gems", "+%d" % int(r["gems"])]
 	return ["ic_gems", "?"]
 
 func _show_daily_popup() -> void:
@@ -1031,8 +1058,9 @@ func _show_settings() -> void:
 	rm.toggled.connect(func(on): Fx.set_reduce_motion(on))
 	box.add_child(rm)
 
-	var stats_txt := "Ganhos totais: %s  ·  Drones: %d  ·  Países: %d\nPrestige: %d  ·  Conquistas: %d/%d" % [
-		Fmt.short(GameState.total_earned), GameState.drones, GameState.current_country + 1,
+	var stats_txt := "Entregas: %s  ·  Ganhos: %s\nDrones: %d  ·  Países: %d/%d  ·  Streak: %dd\nPrestige: %d  ·  Conquistas: %d/%d" % [
+		Fmt.short(float(GameState.total_deliveries)), Fmt.short(GameState.total_earned),
+		GameState.drones, GameState.current_country + 1, Economy.num_countries(), Daily.streak,
 		Prestige.count, Achievements.done_count(), Achievements.total_count()]
 	var stats := _lbl(stats_txt, 17, UITheme.MUTED)
 	stats.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -1043,7 +1071,7 @@ func _show_settings() -> void:
 	restore.pressed.connect(func(): Fx.press(restore); _toast("A verificar compras...", UITheme.ACCENT); SaveSystem.save_game())
 	box.add_child(restore)
 
-	box.add_child(_lbl("Drone Tycoon: Sky Fleet · v1.6.4 · © 2026 LPCF", 15, UITheme.MUTED))
+	box.add_child(_lbl("Drone Tycoon: Sky Fleet · v1.7.0 · © 2026 LPCF", 15, UITheme.MUTED))
 
 	var reset := Button.new(); reset.text = "Repor progresso"
 	reset.add_theme_font_size_override("font_size", 24); reset.add_theme_font_override("font", UITheme.font("Bold"))

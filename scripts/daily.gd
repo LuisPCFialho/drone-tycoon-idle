@@ -5,15 +5,15 @@ signal streak_updated(days: int)
 signal reward_ready()
 signal reward_claimed(day_idx: int)
 
-## 7-day rotating rewards (loops every 7 days)
+## 7-day rotating rewards (loops every 7 days). Mix of gems, cash, boost, influence.
 const REWARDS := [
-    {"gems": 20,  "label": "+20 💎"},
-    {"hours": 1,  "label": "+1h 💰"},
-    {"gems": 50,  "label": "+50 💎"},
-    {"boost": 10, "label": "2× 10min ⚡"},
-    {"gems": 100, "label": "+100 💎"},
-    {"hours": 4,  "label": "+4h 💰"},
-    {"gems": 250, "pgems": 1, "label": "+250 💎 + 1 ⬡ Prestige"},
+    {"influence": 15, "label": "+15 🌐 Influência"},
+    {"hours": 2,  "label": "+2h 💰"},
+    {"gems": 40,  "label": "+40 💎"},
+    {"boost": 15, "label": "2× 15min ⚡"},
+    {"influence": 25, "gems": 25, "label": "+25 Influência + 25 💎"},
+    {"hours": 8,  "label": "+8h 💰"},
+    {"gems": 150, "pgems": 1, "label": "+150 💎 + 1 ⬡ Prestige"},
 ]
 
 # Persisted
@@ -47,9 +47,12 @@ func claim() -> void:
     var idx: int = (streak - 1) % REWARDS.size()
     var r: Dictionary = REWARDS[idx]
     if has_node("/root/GameState"):
-        if r.has("gems"):  GameState.gems += int(r["gems"])
-        if r.has("hours"): GameState.credits += GameState.income_per_sec() * float(r["hours"]) * 3600.0
-        if r.has("boost"): GameState.earn_boost_timer = float(r["boost"]) * 60.0
+        if r.has("gems"):      GameState.gems += int(r["gems"])
+        if r.has("hours"):     GameState.credits += GameState.income_per_sec() * float(r["hours"]) * 3600.0
+        if r.has("boost"):     GameState.earn_boost_timer = float(r["boost"]) * 60.0
+        if r.has("influence"):
+            GameState.influence += int(r["influence"])
+            GameState.influence_total += int(r["influence"])
     if r.has("pgems") and has_node("/root/Prestige"):
         Prestige.pgems += int(r["pgems"])
         Prestige.total_pgems += int(r["pgems"])

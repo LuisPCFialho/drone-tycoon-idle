@@ -28,6 +28,7 @@ var talents := {"global": 0, "speed": 0, "value": 0, "hangar": 0}
 var gem_boost := 0
 var earn_boost_timer := 0.0
 var total_earned := 0.0
+var total_deliveries := 0
 
 # --- transient ---
 var earn_boost_mult := 2.0
@@ -112,7 +113,7 @@ func _process(delta: float) -> void:
 		if v["t"] >= 1.0:
 			v["t"] = 1.0; v["dir"] = -1
 			var amt := per_delivery(d) * fs * boost
-			credits += amt; total_earned += amt
+			credits += amt; total_earned += amt; total_deliveries += 1
 			delivered.emit(amt, 1 + int(v["route"]))
 		elif v["t"] <= 0.0:
 			v["t"] = 0.0; v["dir"] = 1
@@ -278,7 +279,7 @@ func to_dict() -> Dictionary:
 		"credits": credits, "gems": gems, "influence": influence, "influence_total": influence_total,
 		"current_country": current_country, "cities_unlocked": cities_unlocked, "drones": drones,
 		"levels": levels.duplicate(), "talents": talents.duplicate(), "gem_boost": gem_boost,
-		"earn_boost_timer": earn_boost_timer, "total_earned": total_earned,
+		"earn_boost_timer": earn_boost_timer, "total_earned": total_earned, "total_deliveries": total_deliveries,
 	}
 
 func from_dict(d: Dictionary) -> void:
@@ -302,4 +303,5 @@ func from_dict(d: Dictionary) -> void:
 	gem_boost = int(d.get("gem_boost", 0))
 	earn_boost_timer = float(d.get("earn_boost_timer", 0.0))
 	total_earned = float(d.get("total_earned", 0.0))
+	total_deliveries = int(d.get("total_deliveries", 0))
 	_rebuild_drones()

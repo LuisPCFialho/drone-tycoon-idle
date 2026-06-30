@@ -5,11 +5,12 @@ signal started(id: String)
 signal ended(id: String)
 
 const DEFS := {
-    "rush":     {"name": "Hora de Ponta",     "desc": "Ganhos ×2 durante 5 min!",     "icon": "⚡", "dur": 300.0, "mult": 2.0,  "col": 0},
-    "golden":   {"name": "Encomenda Dourada", "desc": "Próxima entrega ×10!",          "icon": "⭐", "dur": 90.0,  "mult": 10.0, "col": 1, "one_shot": true},
-    "storm":    {"name": "Tempestade",         "desc": "Velocidade ÷2, Ganhos ×3!",   "icon": "⛈", "dur": 240.0, "mult": 3.0,  "col": 2, "spd": 0.5},
-    "festival": {"name": "Festival da Cidade","desc": "Ganhos ×2.5 por 8 min!",      "icon": "🎉", "dur": 480.0, "mult": 2.5,  "col": 3},
-    "vip_pkg":  {"name": "Pacote VIP",        "desc": "Próxima entrega ×25!",         "icon": "💼", "dur": 60.0,  "mult": 25.0, "col": 1, "one_shot": true},
+    "rush":     {"name": "Hora de Ponta",     "desc": "Ganhos ×2 durante 5 min!",     "icon": "⚡", "dur": 300.0, "mult": 2.0,  "col": 0, "w": 10},
+    "golden":   {"name": "Encomenda Dourada", "desc": "Próxima entrega ×10!",          "icon": "⭐", "dur": 90.0,  "mult": 10.0, "col": 1, "one_shot": true, "w": 10},
+    "storm":    {"name": "Tempestade",         "desc": "Velocidade ÷2, Ganhos ×3!",   "icon": "⛈", "dur": 240.0, "mult": 3.0,  "col": 2, "spd": 0.5, "w": 10},
+    "festival": {"name": "Festival da Cidade","desc": "Ganhos ×2.5 por 8 min!",      "icon": "🎉", "dur": 480.0, "mult": 2.5,  "col": 3, "w": 10},
+    "vip_pkg":  {"name": "Pacote VIP",        "desc": "Próxima entrega ×25!",         "icon": "💼", "dur": 60.0,  "mult": 25.0, "col": 1, "one_shot": true, "w": 10},
+    "windfall": {"name": "Chuva de Lucros",   "desc": "Ganhos ×8 durante 3 min! RARO!", "icon": "🌟", "dur": 180.0, "mult": 8.0, "col": 1, "w": 2},
 }
 
 const COLORS := [
@@ -49,8 +50,12 @@ func _process(delta: float) -> void:
             _trigger()
 
 func _trigger() -> void:
-    var keys := DEFS.keys()
-    var id: String = keys[randi() % keys.size()]
+    var pool: Array = []
+    for k: String in DEFS.keys():
+        var w: int = int(DEFS[k].get("w", 10))
+        for _i in range(w):
+            pool.append(k)
+    var id: String = pool[randi() % pool.size()]
     active = id; _one_shot_fired = false
     var def: Dictionary = DEFS[id]
     timer = float(def.get("dur", 120.0))
