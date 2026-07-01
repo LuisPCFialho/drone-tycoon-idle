@@ -1,5 +1,5 @@
 extends Control
-## Main scene — Drone Tycoon: Sky Fleet  v1.10.0
+## Main scene — Drone Tycoon: Sky Fleet  v1.11.0
 
 const NAV_H  := 132.0
 const TABS_H := 532.0
@@ -15,6 +15,7 @@ var _nav_btns: Array
 var _nav_icons: Array
 var _nav_labels: Array
 var _nav_dots: Array
+var _nav_ind: ColorRect
 var _toasts: VBoxContainer
 
 # HUD
@@ -37,6 +38,7 @@ var _disp_credits := 0.0
 # previous values for chip-pop detection
 var _prev_gems := 0
 var _prev_infl := 0
+var _prev_combo_mult := 1.0
 
 # Tab widgets
 var _rows := {}
@@ -330,6 +332,14 @@ func _build_nav() -> void:
 	for i in defs.size():
 		nav.add_child(_make_nav_btn(defs[i][0], defs[i][1], i))
 
+	# sliding accent indicator resting on top edge of the nav bar
+	_nav_ind = ColorRect.new(); _nav_ind.color = UITheme.ACCENT
+	_nav_ind.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_nav_ind.anchor_left = 0; _nav_ind.anchor_right = 0
+	_nav_ind.anchor_top = 1; _nav_ind.anchor_bottom = 1
+	_nav_ind.offset_top = -NAV_H; _nav_ind.offset_bottom = -NAV_H + 4
+	add_child(_nav_ind)
+
 func _make_nav_btn(icon_name: String, label_text: String, idx: int) -> Button:
 	var btn := Button.new(); btn.text = ""
 	btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -376,6 +386,13 @@ func _switch_tab(i: int) -> void:
 		ic.pivot_offset = ic.size * 0.5
 		var tw := ic.create_tween()
 		tw.tween_property(ic, "scale", Vector2(target, target), 0.16).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	if _nav_ind != null:
+		var bw := get_viewport_rect().size.x / 6.0
+		var pad := bw * 0.22
+		var tw2 := _nav_ind.create_tween()
+		tw2.set_parallel(true)
+		tw2.tween_property(_nav_ind, "offset_left", bw * float(i) + pad, 0.22).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		tw2.tween_property(_nav_ind, "offset_right", bw * float(i + 1) - pad, 0.22).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	_stagger_in(i)
 
 ## Fade-cascade the rows of the newly shown tab.
@@ -775,6 +792,10 @@ func _build_toasts() -> void:
 	_toasts.alignment = BoxContainer.ALIGNMENT_CENTER; add_child(_toasts)
 
 func _toast(text: String, accent: Color, icon_name := "") -> void:
+	while _toasts.get_child_count() >= 3:
+		var old := _toasts.get_child(0)
+		_toasts.remove_child(old)
+		old.queue_free()
 	var pc := PanelContainer.new()
 	pc.add_theme_stylebox_override("panel", UITheme.toast(accent))
 	var h := HBoxContainer.new(); h.add_theme_constant_override("separation", 8); pc.add_child(h)
@@ -811,11 +832,15 @@ func _process(delta: float) -> void:
 	var ips := GameState.income_per_sec()
 	_income_lbl.text = "+" + Fmt.short(ips) + "/s"
 	_income_lbl.add_theme_color_override("font_color", Events.color() if Events.is_active() else UITheme.GREEN)
+	var cm := GameState.combo_mult()
 	if GameState.combo > 0:
 		_combo_chip.visible = true
-		_combo_lbl.text = "🔥×%.1f" % GameState.combo_mult()
+		_combo_lbl.text = "🔥×%.1f" % cm
+		if cm > _prev_combo_mult:
+			Fx.chip_pop(_combo_chip, UITheme.AMBER)
 	else:
 		_combo_chip.visible = false
+	_prev_combo_mult = cm
 
 	_country_lbl.text = "%s · %d/%d" % [
 		Economy.country_name(GameState.current_country),
@@ -834,8 +859,6 @@ func _process(delta: float) -> void:
 
 	if Events.is_active():
 		_event_timer_bar.anchor_right = Events.time_pct()
-		var s := UITheme.prog_fill(Events.color())
-		_event_timer_bar.add_theme_stylebox_override("panel", s)
 
 	for m in _mode_btns:
 		var active: bool = (GameState.buy_mode == int(m))
@@ -1045,6 +1068,8 @@ func _on_event_start(id: String) -> void:
 	_event_name_lbl.text = str(def.get("name", "")) + " · " + str(def.get("desc", ""))
 	_event_name_lbl.add_theme_color_override("font_color", Events.color())
 	_event_icon.modulate = Events.color()
+	# stylebox cached once per event (was allocated every frame in _process)
+	_event_timer_bar.add_theme_stylebox_override("panel", UITheme.prog_fill(Events.color()))
 	_event_row.visible = true
 	_toast(str(def.get("name", "Evento")), Events.color(), "ic_event")
 	_show_event_banner(def)
@@ -1208,7 +1233,7 @@ func _show_settings() -> void:
 	restore.pressed.connect(func(): Fx.press(restore); _toast("A verificar compras...", UITheme.ACCENT); SaveSystem.save_game())
 	box.add_child(restore)
 
-	box.add_child(_lbl("Drone Tycoon: Sky Fleet · v1.10.0 · © 2026 LPCF", 15, UITheme.MUTED))
+	box.add_child(_lbl("Drone Tycoon: Sky Fleet · v1.11.0 · © 2026 LPCF", 15, UITheme.MUTED))
 
 	var reset := Button.new(); reset.text = "Repor progresso"
 	reset.add_theme_font_size_override("font_size", 28); reset.add_theme_font_override("font", UITheme.font("Bold"))

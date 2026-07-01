@@ -28,6 +28,7 @@ var _cloud: Texture2D
 var _hub_home: Texture2D
 var _hub_city: Texture2D
 var _hub_city2: Texture2D
+var _sea_tex: GradientTexture2D
 
 # --- transient state ---
 var _pops: Array = []                 # floating "+credits" labels
@@ -64,6 +65,13 @@ func _ready() -> void:
 	_hub_city2 = load("res://assets/art/hub_city2.png")
 	GameState.delivered.connect(_on_delivered)
 	GameState.country_changed.connect(func(_i): _reset_view())
+	# cached sea gradient (replaces 40 draw_rect calls per frame)
+	var sg := Gradient.new()
+	sg.set_color(0, VOID); sg.set_color(1, MIDNIGHT)
+	_sea_tex = GradientTexture2D.new()
+	_sea_tex.gradient = sg
+	_sea_tex.fill_from = Vector2(0, 0); _sea_tex.fill_to = Vector2(0, 1)
+	_sea_tex.width = 4; _sea_tex.height = 256
 	_seed_ambiance()
 	set_process(true)
 
@@ -229,12 +237,10 @@ func _draw() -> void:
 # ---------------------------------------------------------------- background
 
 func _draw_sea(w: float, h: float) -> void:
-	# layered vertical gradient Void(top) -> Midnight(bottom)
-	var steps := 40
-	for i in range(steps):
-		var f := float(i) / float(steps)
-		var col := VOID.lerp(MIDNIGHT, f)
-		draw_rect(Rect2(0, band_top + h * f, w, h / float(steps) + 1.0), col)
+	# single cached gradient texture + very slow aurora day-cycle tint
+	var cyc := 0.5 + 0.5 * sin(_t * 0.05)
+	var tint := Color(1, 1, 1).lerp(Color(0.86, 0.92, 1.0), cyc * 0.35)
+	draw_texture_rect(_sea_tex, Rect2(0, band_top, w, h), false, tint)
 
 func _draw_grid(w: float, h: float) -> void:
 	# perspective dot/line grid converging toward a horizon near band_top
@@ -348,31 +354,51 @@ func _centroid(pts: PackedVector2Array) -> Vector2:
 
 # ---------------------------------------------------------------- routes
 
+## Quadratic-bezier control point for a route: bows the lane sideways so lanes
+## read as flight arcs; alternate sides per route index to avoid overlap.
+func _route_ctrl(a: Vector2, b: Vector2, r: int) -> Vector2:
+	var mid := (a + b) * 0.5
+	var d := a.distance_to(b)
+	if d < 0.001:
+		return mid
+	var side_f := -1.0 if (r % 2 == 0) else 1.0
+	return mid + (b - a).orthogonal().normalized() * d * 0.16 * side_f
+
+func _route_point(a: Vector2, ctrl: Vector2, b: Vector2, t: float) -> Vector2:
+	return a.lerp(ctrl, t).lerp(ctrl.lerp(b, t), t)
+
 func _draw_routes(cap: Vector2, cities: Array) -> void:
 	for r in range(GameState.cities_unlocked):
 		var idx: int = 1 + r
 		if idx >= cities.size():
 			continue
 		var cp := _proj(Vector2(cities[idx]["x"], cities[idx]["y"]))
-		# wide soft glow lane
-		draw_line(cap, cp, Color(SKY.r, SKY.g, SKY.b, 0.10), 8.0)
-		# bright core
-		draw_line(cap, cp, Color(CYAN.r, CYAN.g, CYAN.b, 0.45), 2.0)
-		# animated traveling flow highlight (a moving bright dot + short dash)
-		var phase := fmod(_t * 0.35 + float(r) * 0.27, 1.0)
-		var flow := cap.lerp(cp, phase)
-		draw_circle(flow, 3.0, Color(1, 1, 1, 0.85))
-		draw_circle(flow, 6.0, Color(CYAN.r, CYAN.g, CYAN.b, 0.35))
+		var ctrl := _route_ctrl(cap, cp, r)
+		var pts := PackedVector2Array()
+		var segs := 14
+		for i in range(segs + 1):
+			pts.append(_route_point(cap, ctrl, cp, float(i) / float(segs)))
+		# wide soft glow lane + bright core, along the arc
+		draw_polyline(pts, Color(SKY.r, SKY.g, SKY.b, 0.10), 8.0, true)
+		draw_polyline(pts, Color(CYAN.r, CYAN.g, CYAN.b, 0.45), 2.0, true)
+		# two traveling flow highlights per lane (busier logistics feel)
+		for k in range(2):
+			var phase := fmod(_t * 0.35 + float(r) * 0.27 + float(k) * 0.5, 1.0)
+			var flow := _route_point(cap, ctrl, cp, phase)
+			draw_circle(flow, 3.0, Color(1, 1, 1, 0.85))
+			draw_circle(flow, 6.0, Color(CYAN.r, CYAN.g, CYAN.b, 0.35))
 
 # ---------------------------------------------------------------- drones
 
 func _draw_drones(cap: Vector2, cities: Array) -> void:
 	for di in range(GameState.vdrones.size()):
 		var v: Dictionary = GameState.vdrones[di]
-		var rr: int = clampi(1 + int(v["route"]), 1, cities.size() - 1)
+		var route: int = int(v["route"])
+		var rr: int = clampi(1 + route, 1, cities.size() - 1)
 		var b := _proj(Vector2(cities[rr]["x"], cities[rr]["y"]))
+		var ctrl := _route_ctrl(cap, b, route)
 		var tval: float = float(v["t"])
-		var base := cap.lerp(b, tval)
+		var base := _route_point(cap, ctrl, b, tval)
 		# ambient micro-bob
 		var bob := sin(_t * 2.4 + float(di) * 1.7) * 2.5
 		var pos := base + Vector2(0, bob)
@@ -390,14 +416,23 @@ func _draw_drones(cap: Vector2, cities: Array) -> void:
 		# under-glow
 		draw_circle(pos, 16.0, Color(SKY.r, SKY.g, SKY.b, 0.10))
 
-		# carried package on outbound leg
+		# carried package on outbound leg (world-space: hangs below the drone)
 		if int(v["dir"]) == 1:
 			if _package != null:
 				draw_texture_rect(_package, Rect2(pos.x - 9, pos.y + 9, 18, 18), false)
 
+		# heading from bezier tangent so the drone faces its travel direction,
+		# with a light banking wobble
+		var deriv := (ctrl - cap).lerp(b - ctrl, tval) * float(v["dir"])
+		var ang := 0.0
+		if deriv.length_squared() > 0.0001:
+			ang = deriv.angle() + PI * 0.5
+		ang += sin(_t * 2.0 + float(di) * 1.3) * 0.06
 		var tex: Texture2D = _drone_tex[di % _drone_tex.size()]
 		if tex != null:
-			draw_texture_rect(tex, Rect2(pos.x - 20, pos.y - 20, 40, 40), false)
+			draw_set_transform(pos, ang, Vector2.ONE)
+			draw_texture_rect(tex, Rect2(-20, -20, 40, 40), false)
+			draw_set_transform_matrix(Transform2D.IDENTITY)
 
 func _draw_trail(hist: Array, di: int) -> void:
 	if hist.size() < 2:
@@ -443,6 +478,10 @@ func _capital_marker(p: Vector2, flash: float) -> void:
 	# pulsing landing ring via draw_arc (phase from shared clock)
 	var ph := _t * 1.2
 	draw_arc(p, 20.0 + breath * 3.0, ph, ph + TAU, 32, Color(GOLD.r, GOLD.g, GOLD.b, 0.7), 2.5)
+	# rotating radar sweep with fading trail arc
+	var ra := _t * 0.9
+	draw_arc(p, 30.0, ra - 0.85, ra, 10, Color(GOLD.r, GOLD.g, GOLD.b, 0.10), 9.0)
+	draw_line(p, p + Vector2.from_angle(ra) * 34.0, Color(GOLD.r, GOLD.g, GOLD.b, 0.30), 1.6)
 	if flash > 0.0:
 		_delivery_flash(p, GOLD, flash)
 
@@ -476,10 +515,11 @@ func _locked_marker(p: Vector2, is_next: bool) -> void:
 		draw_circle(p, 2.4, Color(MUTED.r, MUTED.g, MUTED.b, 0.55))
 
 func _delivery_flash(p: Vector2, col: Color, t: float) -> void:
-	# expanding ring + fade, t goes 0.5 -> 0
+	# expanding ring + rising light beam, t goes 0.5 -> 0
 	var f: float = clamp(t / 0.5, 0.0, 1.0)
 	var r := 14.0 + (1.0 - f) * 34.0
 	draw_arc(p, r, 0, TAU, 28, Color(col.r, col.g, col.b, f * 0.8), 2.5)
+	draw_line(p, p + Vector2(0, -46.0 * (1.0 - f) - 8.0), Color(col.r, col.g, col.b, f * 0.35), 3.0)
 
 # ---------------------------------------------------------------- labels
 

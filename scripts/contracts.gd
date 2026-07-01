@@ -115,7 +115,7 @@ func _gen(slot_idx: int) -> Dictionary:
 	var types := ["deliveries", "earn", "earn", "deliveries"]
 	if d_count > 10:
 		types.append("drones")
-	var t := types[randi() % types.size()]
+	var t: String = types[randi() % types.size()]
 
 	var target := 1.0
 	var label := ""
