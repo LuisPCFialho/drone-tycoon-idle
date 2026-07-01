@@ -30,6 +30,7 @@ var gem_boost := 0
 var earn_boost_timer := 0.0
 var total_earned := 0.0
 var total_deliveries := 0
+var combo_window_bonus := 0.0   # +seconds on combo decay (gem shop, permanent)
 
 # --- transient ---
 var earn_boost_mult := 2.0
@@ -64,11 +65,16 @@ func route_mult() -> float:
 	return 1.0 + 0.025 * float(levels.get("routes", 0))
 
 func combo_mult() -> float:
-	if combo >= 60: return 2.0
-	if combo >= 30: return 1.5
-	if combo >= 15: return 1.25
-	if combo >= 5:  return 1.1
+	if combo >= 100: return 2.0
+	if combo >= 50:  return 1.5
+	if combo >= 25:  return 1.25
+	if combo >= 10:  return 1.1
 	return 1.0
+
+## Upgrades & drones scale with the country's pay tier so they stay meaningfully
+## priced after each expansion (fixes "trivial after the first country").
+func cost_scale() -> float:
+	return Economy.pay_tier(current_country)
 
 func offline_cap() -> float:
 	var prestige_extra: float = OFFLINE_CAP_BASE * Prestige.extra_offline_pct()
@@ -83,7 +89,7 @@ func _route_dist(r: int) -> float:
 
 ## Credits for one delivery to a route (weak upgrade gains; scales with country tier).
 func per_delivery(dist: float) -> float:
-	var vf := (1.0 + 0.3 * float(levels["cargo"])) * pow(1.04, float(levels["value"])) * (1.0 + 0.04 * float(talents["value"]))
+	var vf := (1.0 + 0.25 * float(levels["cargo"])) * pow(1.04, float(levels["value"])) * (1.0 + 0.04 * float(talents["value"]))
 	return BASE_DELIV * vf * (1.0 + dist) * Economy.pay_tier(current_country) * global_mult() * route_mult()
 
 func fleet_scale() -> float:
@@ -102,7 +108,7 @@ func income_per_sec() -> float:
 	return float(drones) * (s / float(n))
 
 func drone_cost() -> float:
-	return Economy.drone_cost(drones) * max(0.5, 1.0 - 0.02 * float(talents["hangar"]))
+	return Economy.drone_cost(drones) * cost_scale() * max(0.5, 1.0 - 0.02 * float(talents["hangar"]))
 
 # ---------------------------------------------------------------- visuals
 func _rebuild_drones() -> void:
@@ -131,7 +137,7 @@ func _process(delta: float) -> void:
 		if v["t"] >= 1.0:
 			v["t"] = 1.0; v["dir"] = -1
 			combo += 1
-			_combo_decay_t = COMBO_DECAY
+			_combo_decay_t = COMBO_DECAY + combo_window_bonus
 			var amt := per_delivery(d) * fs * boost * combo_mult()
 			credits += amt; total_earned += amt; total_deliveries += 1
 			delivered.emit(amt, 1 + int(v["route"]))
@@ -145,7 +151,7 @@ func _process(delta: float) -> void:
 # ---------------------------------------------------------------- drones
 func drone_cost_multi(count: int) -> float:
 	var rate := Economy.DRONE_RATE
-	var first := Economy.drone_cost(drones)
+	var first := Economy.drone_cost(drones) * cost_scale()
 	return first * (pow(rate, float(count)) - 1.0) / (rate - 1.0) * max(0.5, 1.0 - 0.02 * float(talents["hangar"]))
 
 func drone_max_affordable() -> int:
@@ -218,13 +224,13 @@ func upgrade_cost_multi(key: String, count: int) -> float:
 		return 0.0
 	var u: Dictionary = Economy.UPGRADES[key]
 	var rate: float = u["rate"]
-	var first: float = u["base"] * pow(rate, float(levels[key]))
+	var first: float = u["base"] * pow(rate, float(levels[key])) * cost_scale()
 	return first * (pow(rate, float(count)) - 1.0) / (rate - 1.0)
 
 func max_affordable(key: String) -> int:
 	var u: Dictionary = Economy.UPGRADES[key]
 	var rate: float = u["rate"]
-	var first: float = u["base"] * pow(rate, float(levels[key]))
+	var first: float = u["base"] * pow(rate, float(levels[key])) * cost_scale()
 	if credits < first:
 		return 0
 	return max(0, int(floor(log(1.0 + credits * (rate - 1.0) / first) / log(rate))))
@@ -276,6 +282,24 @@ func buy_gem_cash(cost: int, seconds: float) -> bool:
 	credits += income_per_sec() * seconds
 	return true
 
+func buy_gem_drones(cost: int, n: int) -> bool:
+	if gems < cost:
+		return false
+	gems -= cost; drones += n
+	_rebuild_drones()
+	Achievements.note_drone_buy(n, drones)
+	Achievements.note_gems_spent(cost)
+	return true
+
+func buy_gem_combo_time(cost: int) -> bool:
+	if combo_window_bonus > 0.0:
+		return false
+	if gems < cost:
+		return false
+	gems -= cost; combo_window_bonus = COMBO_DECAY
+	Achievements.note_gems_spent(cost)
+	return true
+
 # ---------------------------------------------------------------- boosts/offline
 func boost_earn_2x() -> void:
 	earn_boost_timer = EARN_BOOST_DURATION
@@ -300,6 +324,7 @@ func to_dict() -> Dictionary:
 		"current_country": current_country, "cities_unlocked": cities_unlocked, "drones": drones,
 		"levels": levels.duplicate(), "talents": talents.duplicate(), "gem_boost": gem_boost,
 		"earn_boost_timer": earn_boost_timer, "total_earned": total_earned, "total_deliveries": total_deliveries,
+		"combo_window_bonus": combo_window_bonus,
 	}
 
 func from_dict(d: Dictionary) -> void:
@@ -324,4 +349,5 @@ func from_dict(d: Dictionary) -> void:
 	earn_boost_timer = float(d.get("earn_boost_timer", 0.0))
 	total_earned = float(d.get("total_earned", 0.0))
 	total_deliveries = int(d.get("total_deliveries", 0))
+	combo_window_bonus = float(d.get("combo_window_bonus", 0.0))
 	_rebuild_drones()

@@ -29,6 +29,10 @@ func _process(delta: float) -> void:
 				_replace(i)
 		elif now >= int(s.get("deadline", 0)):
 			_replace(i)
+		elif str(s.get("type", "")) == "combo":
+			slots[i]["progress"] = maxf(float(s.get("progress", 0.0)), float(GameState.combo))
+			if float(slots[i]["progress"]) >= float(s.get("target", 1.0)):
+				slots[i]["ready"] = true
 		elif _frame % 60 == 0 and str(s.get("type", "")) == "drones":
 			slots[i]["progress"] = float(GameState.drones)
 			if float(slots[i]["progress"]) >= float(s.get("target", 1.0)):
@@ -53,7 +57,7 @@ func _on_delivered(_amount: float, _city: int) -> void:
 				if slots[i]["progress"] >= float(s.get("target", 1.0)):
 					slots[i]["ready"] = true
 
-func claim(i: int) -> bool:
+func claim(i: int, mult := 1.0) -> bool:
 	if i < 0 or i >= slots.size():
 		return false
 	var s: Dictionary = slots[i]
@@ -61,13 +65,20 @@ func claim(i: int) -> bool:
 		return false
 	slots[i]["claimed"] = true
 	_refresh_timers[i] = EXPIRE_DELAY
-	var rc: float = float(s.get("reward_credits", 0.0))
+	var rc: float = float(s.get("reward_credits", 0.0)) * mult
 	GameState.credits += rc
 	GameState.total_earned += rc
-	var rg: int = int(s.get("reward_gems", 0))
+	var rg: int = int(float(s.get("reward_gems", 0)) * mult)
 	if rg > 0:
 		GameState.gems += rg
 	completed.emit(i)
+	return true
+
+## Replace a non-weekly contract with a fresh one (rewarded-ad reroll).
+func reroll(i: int) -> bool:
+	if i < 0 or i >= 3 or i >= slots.size():
+		return false
+	_replace(i)
 	return true
 
 func progress_pct(i: int) -> float:
@@ -115,6 +126,8 @@ func _gen(slot_idx: int) -> Dictionary:
 	var types := ["deliveries", "earn", "earn", "deliveries"]
 	if d_count > 10:
 		types.append("drones")
+	if d_count > 5:
+		types.append("combo")
 	var t: String = types[randi() % types.size()]
 
 	var target := 1.0
@@ -145,6 +158,12 @@ func _gen(slot_idx: int) -> Dictionary:
 			dur = 3600.0
 			reward_credits = ips * 180.0 * diff
 			reward_gems = 1
+		"combo":
+			target = float(15 + slot_idx * 15)
+			label = "Atinge combo de %d entregas" % int(target)
+			dur = 1800.0
+			reward_credits = ips * 240.0 * diff
+			reward_gems = 1 if slot_idx >= 2 else 0
 		_:
 			t = "earn"
 			target = 1000.0

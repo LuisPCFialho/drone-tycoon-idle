@@ -21,11 +21,14 @@ const TALENTS := {
 }
 const TALENT_ORDER := ["global", "speed", "value", "hangar"]
 
-const GEM_SHOP_ORDER := ["boost", "cash", "warp"]
+const GEM_SHOP_ORDER := ["boost", "cash", "warp", "warp24", "drone_pack", "combo_time"]
 const GEM_SHOP := {
-	"boost": {"name": "Núcleo de Lucro", "desc": "+25% lucros GLOBAIS, para sempre.", "icon": "ic_prestige"},
-	"cash":  {"name": "Injeção de Créditos", "desc": "Ganha já 1 hora de lucros.", "cost": 30, "icon": "ic_credits"},
-	"warp":  {"name": "Salto Temporal 8h", "desc": "Ganha já 8 horas de lucros.", "cost": 80, "icon": "ic_boost"},
+	"boost":      {"name": "Núcleo de Lucro", "desc": "+25% lucros GLOBAIS, para sempre.", "icon": "ic_prestige"},
+	"cash":       {"name": "Injeção de Créditos", "desc": "Ganha já 1 hora de lucros.", "cost": 30, "icon": "ic_credits"},
+	"warp":       {"name": "Salto Temporal 8h", "desc": "Ganha já 8 horas de lucros.", "cost": 80, "icon": "ic_boost"},
+	"warp24":     {"name": "Salto Temporal 24h", "desc": "Ganha já 24 horas de lucros.", "cost": 180, "icon": "ic_boost"},
+	"drone_pack": {"name": "Esquadrão Instantâneo", "desc": "+10 drones imediatamente, sem custo em créditos.", "cost": 90, "icon": "ic_drone"},
+	"combo_time": {"name": "Combo Duradouro", "desc": "O combo demora o DOBRO do tempo a expirar. Permanente.", "cost": 150, "icon": "ic_speed"},
 }
 
 func _ready() -> void:

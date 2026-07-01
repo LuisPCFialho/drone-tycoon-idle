@@ -1,5 +1,5 @@
 extends Control
-## Main scene — Drone Tycoon: Sky Fleet  v1.11.0
+## Main scene — Drone Tycoon: Sky Fleet  v1.12.0
 
 const NAV_H  := 132.0
 const TABS_H := 532.0
@@ -62,6 +62,7 @@ var _prestige_info_lbl: Label
 var _achieve_cells := {}
 var _achieve_prog_fills := {}
 var _achieve_prog_lbls := {}
+var _settings_stats_lbl: Label = null
 var _prestige_ready_prev := false
 var _tap_block_until := 0   # ms; drag-scroll guard so dragging never buys
 
@@ -72,6 +73,8 @@ var _mission_prog_lbls: Array = []
 var _mission_time_lbls: Array = []
 var _mission_claim_btns: Array = []
 var _mission_reward_lbls: Array = []
+var _mission_x2_btns: Array = []
+var _mission_reroll_btns: Array = []
 
 # Income milestone celebration
 const INCOME_MILESTONES: Array = [1000.0, 10000.0, 100000.0, 1000000.0, 10000000.0, 100000000.0, 1000000000.0]
@@ -774,9 +777,12 @@ func _buy_gem(id: String, btn: Button) -> void:
 	var ok := false
 	var grants_cash := false
 	match id:
-		"boost": ok = GameState.buy_gem_boost()
-		"cash":  ok = GameState.buy_gem_cash(int(Economy.GEM_SHOP["cash"]["cost"]), 3600.0); grants_cash = true
-		"warp":  ok = GameState.buy_gem_cash(int(Economy.GEM_SHOP["warp"]["cost"]), 28800.0); grants_cash = true
+		"boost":      ok = GameState.buy_gem_boost()
+		"cash":       ok = GameState.buy_gem_cash(int(Economy.GEM_SHOP["cash"]["cost"]), 3600.0); grants_cash = true
+		"warp":       ok = GameState.buy_gem_cash(int(Economy.GEM_SHOP["warp"]["cost"]), 28800.0); grants_cash = true
+		"warp24":     ok = GameState.buy_gem_cash(int(Economy.GEM_SHOP["warp24"]["cost"]), 86400.0); grants_cash = true
+		"drone_pack": ok = GameState.buy_gem_drones(int(Economy.GEM_SHOP["drone_pack"]["cost"]), 10)
+		"combo_time": ok = GameState.buy_gem_combo_time(int(Economy.GEM_SHOP["combo_time"]["cost"]))
 	if ok:
 		Fx.press(btn); Audio.play("buy"); _disp_credits = GameState.credits
 		_reward_fx(btn, UITheme.CYAN, "gem", 7)
@@ -896,12 +902,22 @@ func _process(delta: float) -> void:
 		var bc := GameState.gem_boost_cost()
 		var bbtn: Button = gb["btn"]
 		bbtn.text = str(bc); bbtn.disabled = GameState.gems < bc; _afford(bbtn, not bbtn.disabled)
-	for id: String in ["cash", "warp"]:
+	for id: String in ["cash", "warp", "warp24", "drone_pack"]:
 		var gr: Dictionary = _gem_rows.get(id, {})
 		if not gr.is_empty():
 			var c: int = int(Economy.GEM_SHOP[id]["cost"])
 			var gbtn: Button = gr["btn"]
 			gbtn.text = str(c); gbtn.disabled = GameState.gems < c; _afford(gbtn, not gbtn.disabled)
+	var gct: Dictionary = _gem_rows.get("combo_time", {})
+	if not gct.is_empty():
+		var ct_btn: Button = gct["btn"]
+		if GameState.combo_window_bonus > 0.0:
+			ct_btn.text = "Obtido"; ct_btn.disabled = true
+			_afford(ct_btn, false)
+		else:
+			var cc2: int = int(Economy.GEM_SHOP["combo_time"]["cost"])
+			ct_btn.text = str(cc2); ct_btn.disabled = GameState.gems < cc2
+			_afford(ct_btn, not ct_btn.disabled)
 
 	_progress_lbl.text = "%s — %d/%d cidades abertas." % [Economy.country_name(GameState.current_country), GameState.cities_unlocked, GameState.max_cities()]
 	var cc := GameState.next_city_cost()
@@ -941,6 +957,12 @@ func _process(delta: float) -> void:
 		_prestige_ready_prev = ready
 
 	_update_nav_dots()
+
+	if Engine.get_frames_drawn() % 30 == 0 and _settings_stats_lbl != null:
+		if is_instance_valid(_settings_stats_lbl):
+			_settings_stats_lbl.text = _settings_stats_text()
+		else:
+			_settings_stats_lbl = null
 
 	if Engine.get_frames_drawn() % 60 == 0:
 		Achievements.check("income_1k",    ips >= 1000.0)
@@ -1000,7 +1022,7 @@ func _update_nav_dots() -> void:
 func _effect(key: String) -> String:
 	match key:
 		"speed":  return "+3%/nv velocidade"
-		"cargo":  return "+0.3/nv carga"
+		"cargo":  return "+0.25/nv carga"
 		"value":  return "+4%/nv valor"
 		"routes": return "+2.5%/nv eficiência de rota"
 	return ""
@@ -1199,30 +1221,50 @@ func _show_prestige_confirm() -> void:
 	cancel.custom_minimum_size = Vector2(0, 62); cancel.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 	cancel.pressed.connect(func(): layer.queue_free()); box.add_child(cancel)
 
+## Upscale a CheckButton's toggle textures (default theme switch is tiny on phones).
+func _grow_toggle(cb: CheckButton, factor := 1.7) -> void:
+	var thm := ThemeDB.get_default_theme()
+	if thm == null: return
+	for n: String in ["checked", "unchecked", "checked_disabled", "unchecked_disabled"]:
+		if not thm.has_icon(n, "CheckButton"): continue
+		var ic := thm.get_icon(n, "CheckButton")
+		if ic == null: continue
+		var img := ic.get_image()
+		if img == null: continue
+		img.resize(int(img.get_width() * factor), int(img.get_height() * factor), Image.INTERPOLATE_LANCZOS)
+		cb.add_theme_icon_override(n, ImageTexture.create_from_image(img))
+
+func _settings_toggle(text: String, pressed: bool, cb: Callable) -> CheckButton:
+	var t := CheckButton.new(); t.text = text
+	t.add_theme_font_size_override("font_size", 30); t.custom_minimum_size = Vector2(0, 96)
+	t.button_pressed = pressed
+	t.toggled.connect(cb)
+	_grow_toggle(t)
+	return t
+
+func _settings_stats_text() -> String:
+	return "Entregas: %s  ·  Ganhos: %s\nRendimento: %s/s  ·  Combo: %d\nDrones: %d  ·  Países: %d/%d  ·  Streak: %dd\nPrestige: %d  ·  Conquistas: %d/%d" % [
+		Fmt.short(float(GameState.total_deliveries)), Fmt.short(GameState.total_earned),
+		Fmt.short(GameState.income_per_sec()), GameState.combo,
+		GameState.drones, GameState.current_country + 1, Economy.num_countries(), Daily.streak,
+		Prestige.count, Achievements.done_count(), Achievements.total_count()]
+
 func _show_settings() -> void:
 	var layer := _overlay(); var box := _popup_box(layer, UITheme.ACCENT)
 	var hd := HBoxContainer.new(); hd.alignment = BoxContainer.ALIGNMENT_CENTER; hd.add_theme_constant_override("separation", 10)
 	hd.add_child(_icon("ic_gear", 38)); hd.add_child(_lbl("Definições", 32, UITheme.INK)); box.add_child(hd)
 
-	var mute := CheckButton.new(); mute.text = "Som activado"
-	mute.add_theme_font_size_override("font_size", 30); mute.custom_minimum_size = Vector2(0, 82)
-	mute.button_pressed = not Audio.muted
-	mute.toggled.connect(func(on): Audio.muted = not on; SaveSystem.save_game())
-	box.add_child(mute)
+	box.add_child(_settings_toggle("Som activado", not Audio.muted,
+		func(on): Audio.muted = not on; SaveSystem.save_game()))
+	box.add_child(_settings_toggle("Vibração", Fx.haptics,
+		func(on): Fx.haptics = on; SaveSystem.save_game()))
+	box.add_child(_settings_toggle("Reduzir animações", Fx.reduce_motion,
+		func(on): Fx.set_reduce_motion(on); SaveSystem.save_game()))
 
-	var rm := CheckButton.new(); rm.text = "Reduzir animações"
-	rm.add_theme_font_size_override("font_size", 30); rm.custom_minimum_size = Vector2(0, 82)
-	rm.button_pressed = Fx.reduce_motion
-	rm.toggled.connect(func(on): Fx.set_reduce_motion(on))
-	box.add_child(rm)
-
-	var stats_txt := "Entregas: %s  ·  Ganhos: %s\nDrones: %d  ·  Países: %d/%d  ·  Streak: %dd\nPrestige: %d  ·  Conquistas: %d/%d" % [
-		Fmt.short(float(GameState.total_deliveries)), Fmt.short(GameState.total_earned),
-		GameState.drones, GameState.current_country + 1, Economy.num_countries(), Daily.streak,
-		Prestige.count, Achievements.done_count(), Achievements.total_count()]
-	var stats := _lbl(stats_txt, 17, UITheme.MUTED)
+	var stats := _lbl(_settings_stats_text(), 17, UITheme.MUTED)
 	stats.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	stats.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; box.add_child(stats)
+	_settings_stats_lbl = stats
 
 	var attr := _lbl("🎵 Música: Eric Matyas · soundimage.org", 14, UITheme.MUTED)
 	attr.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; box.add_child(attr)
@@ -1233,7 +1275,7 @@ func _show_settings() -> void:
 	restore.pressed.connect(func(): Fx.press(restore); _toast("A verificar compras...", UITheme.ACCENT); SaveSystem.save_game())
 	box.add_child(restore)
 
-	box.add_child(_lbl("Drone Tycoon: Sky Fleet · v1.11.0 · © 2026 LPCF", 15, UITheme.MUTED))
+	box.add_child(_lbl("Drone Tycoon: Sky Fleet · v1.12.0 · © 2026 LPCF", 15, UITheme.MUTED))
 
 	var reset := Button.new(); reset.text = "Repor progresso"
 	reset.add_theme_font_size_override("font_size", 28); reset.add_theme_font_override("font", UITheme.font("Bold"))
@@ -1398,6 +1440,10 @@ func _update_contracts() -> void:
 		cbtn.disabled = not ready
 		cbtn.text = "REIVINDICAR" if ready else ("✓ Recebido" if s.get("claimed", false) else "...")
 		_afford(cbtn, ready)
+		if i < _mission_x2_btns.size():
+			(_mission_x2_btns[i] as Button).visible = ready
+		if i < _mission_reroll_btns.size():
+			(_mission_reroll_btns[i] as Button).visible = (i < 3) and not ready and not s.get("claimed", false)
 		var rc: float = float(s.get("reward_credits", 0.0))
 		var rg: int = int(s.get("reward_gems", 0))
 		var rew := "+" + Fmt.short(rc)
@@ -1427,6 +1473,24 @@ func _build_missions_tab() -> ScrollContainer:
 		_mission_title_lbls.append(title)
 		var time_lbl := _lbl("--:--", 15, UITheme.MUTED); top.add_child(time_lbl)
 		_mission_time_lbls.append(time_lbl)
+
+		# rewarded-ad reroll (rotating slots only; weekly is fixed)
+		var ri := i
+		var rbtn := Button.new(); rbtn.text = "↻📺"
+		rbtn.add_theme_font_size_override("font_size", 16)
+		rbtn.custom_minimum_size = Vector2(64, 44)
+		rbtn.add_theme_stylebox_override("normal", UITheme.solid(UITheme.PANEL2, 12))
+		rbtn.add_theme_stylebox_override("focus",  StyleBoxEmpty.new())
+		rbtn.visible = (i < 3)
+		rbtn.pressed.connect(func():
+			if not _can_tap(): return
+			Fx.press(rbtn)
+			Ads.show_rewarded("reroll", func():
+				if Contracts.reroll(ri):
+					_toast("Missão substituída!", UITheme.CYAN, "ic_achieve"))
+		)
+		top.add_child(rbtn)
+		_mission_reroll_btns.append(rbtn)
 
 		# Progress bar
 		var pb_bg := Panel.new(); pb_bg.custom_minimum_size = Vector2(0, 8)
@@ -1465,5 +1529,24 @@ func _build_missions_tab() -> ScrollContainer:
 		)
 		bot.add_child(cbtn)
 		_mission_claim_btns.append(cbtn)
+
+		# double reward via rewarded ad
+		var xbtn := _buy_btn(UITheme.GREEN_D)
+		xbtn.text = "2×📺"
+		xbtn.size_flags_horizontal = Control.SIZE_SHRINK_END
+		xbtn.custom_minimum_size = Vector2(84, 52)
+		xbtn.add_theme_font_size_override("font_size", 16)
+		xbtn.visible = false
+		xbtn.pressed.connect(func():
+			if not _can_tap(): return
+			Fx.press(xbtn)
+			Ads.show_rewarded("mission2x", func():
+				if Contracts.claim(ci, 2.0):
+					Audio.play("milestone")
+					Fx.chip_pop(_credits_chip, UITheme.GOLD)
+					_toast("Recompensa a DOBRAR! 🎉", UITheme.GREEN, "ic_achieve"))
+		)
+		bot.add_child(xbtn)
+		_mission_x2_btns.append(xbtn)
 
 	return r[0]
