@@ -1,14 +1,14 @@
 extends Node
-## Procedural SFX — synthesises PCM clips at startup, no audio files needed.
+## Procedural SFX v2 — 44.1 kHz, richer synthesis, C-major pad.
 ## Public API: play(name), tick(), muted, to_dict/from_dict.
 
-const RATE := 22050
-var muted := false
-var music_vol := -20.0   # ambient pad volume in dB
-var sfx_vol := 0.0       # SFX offset in dB
+const RATE := 44100
+var muted    := false
+var music_vol := -18.0
+var sfx_vol   := 0.0
 var _streams := {}
 var _players: Array[AudioStreamPlayer] = []
-var _next := 0
+var _next      := 0
 var _last_sell := 0
 var _last_tick := 0
 var _ambient: AudioStreamPlayer
@@ -22,8 +22,8 @@ func _ready() -> void:
 	_ambient.volume_db = music_vol; _ambient.play()
 	if has_node("/root/GameState"):
 		GameState.delivered.connect(_on_delivered)
-		GameState.country_changed.connect(func(_i): play("milestone", 1.0, -2.0))
 		GameState.city_unlocked.connect(func(_i): play("unlock", 1.0, -3.0))
+	# country_changed handled by main.gd — no double-play here
 	if has_node("/root/Events"):
 		Events.started.connect(func(_id): play("event_start", 1.0, -2.0))
 	if has_node("/root/Daily"):
@@ -32,18 +32,19 @@ func _ready() -> void:
 		Prestige.prestiged.connect(func(_n): play("prestige", 0.95, 2.0))
 
 func _build_streams() -> void:
-	_streams["tap"]         = _ping(880.0, 880.0, 0.022, 0.14)
-	_streams["tick"]        = _noise(0.026, 0.12, 2.0)
-	_streams["buy"]         = _ping(620.0, 1040.0, 0.090, 0.28)
-	_streams["sell"]        = _chime(1046.5, 0.120, 0.22)
-	_streams["unlock"]      = _arp3([523.25, 659.26, 783.99], 0.072, 0.25)
-	_streams["milestone"]   = _arp3([523.25, 659.26, 783.99, 1046.5], 0.105, 0.27)
-	_streams["achieve"]     = _arp3([587.33, 739.99, 987.77, 1174.66], 0.085, 0.26)
-	_streams["prestige"]    = _chord([261.63, 329.63, 392.00, 523.25, 659.26], 0.55, 0.30)
-	_streams["daily"]       = _arp3([783.99, 987.77, 1174.66, 1318.51], 0.090, 0.26)
-	_streams["event_start"] = _ping(440.0, 880.0, 0.18, 0.24)
-	_streams["error"]       = _noise(0.080, 0.18, 0.8)
-	_streams["pad"]         = _pad(4.0)
+	_streams["tap"]         = _click(0.020, 0.18)
+	_streams["tick"]        = _click(0.013, 0.13)
+	_streams["buy"]         = _sweep(440.0, 880.0, 0.15, 0.22)
+	_streams["whoosh"]      = _whoosh(0.30, 0.20)
+	_streams["sell"]        = _bell(1046.5, 0.22, 0.22)
+	_streams["unlock"]      = _arp([392.0, 493.88, 587.33, 783.99], 0.072, 0.24)
+	_streams["milestone"]   = _arp([261.63, 329.63, 392.00, 493.88, 523.25], 0.095, 0.26)
+	_streams["achieve"]     = _jingle([587.33, 698.46, 880.00, 1046.5], 0.080, 0.25)
+	_streams["prestige"]    = _fanfare([261.63, 329.63, 392.00, 523.25, 659.26], 0.75, 0.28)
+	_streams["daily"]       = _arp([329.63, 415.30, 493.88, 622.25], 0.085, 0.24)
+	_streams["event_start"] = _alert(0.22, 0.22)
+	_streams["error"]       = _buzz(0.14, 0.18)
+	_streams["pad"]         = _pad(8.0)
 
 func _process(_delta: float) -> void:
 	if _ambient:
@@ -52,9 +53,9 @@ func _process(_delta: float) -> void:
 
 func _on_delivered(_amount: float, _hub: int) -> void:
 	var now := Time.get_ticks_msec()
-	if now - _last_sell < 140: return
+	if now - _last_sell < 120: return
 	_last_sell = now
-	play("sell", randf_range(0.93, 1.10), -5.0)
+	play("sell", randf_range(0.90, 1.12), -6.0)
 
 func play(name: String, pitch := 1.0, vol_db := 0.0) -> void:
 	if muted or not _streams.has(name): return
@@ -77,104 +78,181 @@ func set_sfx_vol(db: float) -> void:
 func muted_music_db() -> float:
 	return -80.0 if muted else music_vol
 
-# ── Oscillators ───────────────────────────────────────────────────────────────
-
-func _tri(freq: float, t: float) -> float:
-	var x := fmod(freq * t, 1.0)
-	return 1.0 - 4.0 * abs(x - 0.5)
+# ── Oscillators ──────────────────────────────────────────────────────────────────
 
 func _sine(freq: float, t: float) -> float:
 	return sin(TAU * freq * t)
 
-# Smooth decay envelope (fast attack, exponential decay)
-func _dec(i: int, n: int, attack_n: int, decay: float) -> float:
-	if i < attack_n:
-		return float(i) / float(max(1, attack_n))
-	return pow(1.0 - float(i - attack_n) / float(max(1, n - attack_n)), decay)
+func _tri(freq: float, t: float) -> float:
+	return 1.0 - 4.0 * abs(fmod(freq * t, 1.0) - 0.5)
 
-# ── Sound builders ────────────────────────────────────────────────────────────
+func _saw(freq: float, t: float) -> float:
+	return 2.0 * fmod(freq * t, 1.0) - 1.0
 
-## Rising-pitch triangle ping — "buy" and "tap"
-func _ping(f_start: float, f_end: float, dur: float, vol: float) -> AudioStreamWAV:
+# Exponential decay with a short linear attack
+func _dec(i: int, n: int, atk: int, decay: float) -> float:
+	if i < atk:
+		return float(i) / float(max(1, atk))
+	return pow(1.0 - float(i - atk) / float(max(1, n - atk)), decay)
+
+# ── Sound builders ───────────────────────────────────────────────────────────────
+
+## Soft noise click for tap / tick
+func _click(dur: float, vol: float) -> AudioStreamWAV:
+	var n := int(dur * RATE)
+	var data := PackedByteArray(); data.resize(n * 2)
+	var prev := 0.0
+	for i in range(n):
+		var env := pow(1.0 - float(i) / float(n), 3.0)
+		var raw := randf() * 2.0 - 1.0
+		prev = lerpf(prev, raw, 0.22)
+		data.encode_s16(i * 2, int(clampf(prev * env * vol, -1.0, 1.0) * 32767.0))
+	return _wav(data)
+
+## Bell tone — harmonic series with long sine decay (delivery / sell)
+func _bell(freq: float, dur: float, vol: float) -> AudioStreamWAV:
 	var n := int(dur * RATE)
 	var data := PackedByteArray(); data.resize(n * 2)
 	var atk := int(0.003 * RATE)
 	for i in range(n):
 		var t := float(i) / RATE
-		var frac := float(i) / n
-		var freq := lerpf(f_start, f_end, pow(frac, 0.5))
-		var env := _dec(i, n, atk, 2.2)
-		var s := _tri(freq, t) * env * vol
+		var env := _dec(i, n, atk, 1.4)
+		var s := (_sine(freq, t) * 0.70 + _sine(freq * 2.0, t) * 0.20 + _sine(freq * 2.756, t) * 0.10) * env * vol
 		data.encode_s16(i * 2, int(clampf(s, -1.0, 1.0) * 32767.0))
 	return _wav(data)
 
-## Sine chime — "sell" (delivery)
-func _chime(freq: float, dur: float, vol: float) -> AudioStreamWAV:
+## Rising sine+triangle sweep — buy button
+func _sweep(f1: float, f2: float, dur: float, vol: float) -> AudioStreamWAV:
 	var n := int(dur * RATE)
 	var data := PackedByteArray(); data.resize(n * 2)
 	var atk := int(0.004 * RATE)
 	for i in range(n):
 		var t := float(i) / RATE
-		var env := _dec(i, n, atk, 1.5)
-		var s := (_sine(freq, t) * 0.80 + _sine(freq * 2.0, t) * 0.20) * env * vol
+		var freq := lerpf(f1, f2, pow(float(i) / float(n), 0.7))
+		var env := _dec(i, n, atk, 2.0)
+		var s := (_sine(freq, t) * 0.65 + _tri(freq, t) * 0.35) * env * vol
 		data.encode_s16(i * 2, int(clampf(s, -1.0, 1.0) * 32767.0))
 	return _wav(data)
 
-## Ascending note arpeggio — unlock, milestone, achieve
-func _arp3(freqs: Array, note_dur: float, vol: float) -> AudioStreamWAV:
-	var note_n := int(note_dur * RATE)
-	var n := note_n * freqs.size()
-	var data := PackedByteArray(); data.resize(n * 2)
-	var atk := int(0.003 * RATE)
-	for s_idx in range(freqs.size()):
-		var freq: float = freqs[s_idx]
-		var base := s_idx * note_n
-		for i in range(note_n):
-			var t := float(base + i) / RATE
-			var env := _dec(i, note_n, atk, 1.8)
-			var s := _tri(freq, t) * env * vol
-			data.encode_s16((base + i) * 2, int(clampf(s, -1.0, 1.0) * 32767.0))
-	return _wav(data)
-
-## Simultaneous chord strike — prestige
-func _chord(freqs: Array, dur: float, vol: float) -> AudioStreamWAV:
-	var n := int(dur * RATE)
-	var data := PackedByteArray(); data.resize(n * 2)
-	var atk := int(0.008 * RATE)
-	var sz := freqs.size()
-	for i in range(n):
-		var t := float(i) / RATE
-		var env := _dec(i, n, atk, 1.6)
-		var mix := 0.0
-		for f in freqs:
-			var fv: float = float(f)
-			mix += _sine(fv, t)
-		mix /= float(sz)
-		data.encode_s16(i * 2, int(clampf(mix * env * vol, -1.0, 1.0) * 32767.0))
-	return _wav(data)
-
-## Filtered noise burst — tick
-func _noise(dur: float, vol: float, decay: float) -> AudioStreamWAV:
+## Rising noise + tone whoosh — drone purchase
+func _whoosh(dur: float, vol: float) -> AudioStreamWAV:
 	var n := int(dur * RATE)
 	var data := PackedByteArray(); data.resize(n * 2)
 	var prev := 0.0
 	for i in range(n):
-		var env := pow(1.0 - float(i) / n, decay)
+		var frac := float(i) / float(n)
+		var env := sin(PI * frac)
 		var raw := randf() * 2.0 - 1.0
-		prev = lerpf(prev, raw, 0.3)
-		data.encode_s16(i * 2, int(clampf(prev * env * vol, -1.0, 1.0) * 32767.0))
+		prev = lerpf(prev, raw, 0.05 + 0.35 * frac)
+		var t := float(i) / RATE
+		var tone := _sine(lerpf(80.0, 400.0, pow(frac, 1.5)), t) * 0.3 * frac
+		data.encode_s16(i * 2, int(clampf((prev * 0.7 + tone) * env * vol, -1.0, 1.0) * 32767.0))
 	return _wav(data)
 
-## Ambient looping pad — C minor chord, mono, 4 s
+## Ascending arpeggio (sine + triangle blend) — unlock / milestone / daily
+func _arp(freqs: Array, note_dur: float, vol: float) -> AudioStreamWAV:
+	var note_n := int(note_dur * RATE)
+	var n := note_n * freqs.size()
+	var data := PackedByteArray(); data.resize(n * 2)
+	var atk := int(0.004 * RATE)
+	for s_idx in range(freqs.size()):
+		var freq: float = float(freqs[s_idx])
+		var base := s_idx * note_n
+		for i in range(note_n):
+			var t := float(base + i) / RATE
+			var env := _dec(i, note_n, atk, 1.6)
+			var s := (_sine(freq, t) * 0.75 + _tri(freq, t) * 0.25) * env * vol
+			var prev_val := float(data.decode_s16((base + i) * 2)) / 32767.0
+			data.encode_s16((base + i) * 2, int(clampf(prev_val + s, -1.0, 1.0) * 32767.0))
+	return _wav(data)
+
+## Staccato jingle with gap before final long note — achievements
+func _jingle(freqs: Array, note_dur: float, vol: float) -> AudioStreamWAV:
+	var note_n := int(note_dur * RATE)
+	var gap_n  := int(0.040 * RATE)
+	var total  := (note_n + gap_n) * (freqs.size() - 1) + note_n * 2
+	var data := PackedByteArray(); data.resize(total * 2)
+	var atk := int(0.003 * RATE)
+	var cursor := 0
+	for s_idx in range(freqs.size()):
+		var freq: float = float(freqs[s_idx])
+		var this_n := note_n * 2 if s_idx == freqs.size() - 1 else note_n
+		for i in range(this_n):
+			var t := float(cursor + i) / RATE
+			var env := _dec(i, this_n, atk, 1.8)
+			var s := _sine(freq, t) * env * vol
+			data.encode_s16((cursor + i) * 2, int(clampf(s, -1.0, 1.0) * 32767.0))
+		cursor += this_n
+		if s_idx < freqs.size() - 1:
+			cursor += gap_n
+	return _wav(data)
+
+## Staggered chord fanfare — prestige
+func _fanfare(freqs: Array, dur: float, vol: float) -> AudioStreamWAV:
+	var n := int(dur * RATE)
+	var stagger := int(0.040 * RATE)
+	var data := PackedByteArray(); data.resize(n * 2)
+	var sz := freqs.size()
+	for s_idx in range(sz):
+		var freq: float = float(freqs[s_idx])
+		var start := s_idx * stagger
+		var atk := int(0.010 * RATE)
+		for i in range(start, n):
+			var t := float(i) / RATE
+			var local_n := n - start
+			var env := _dec(i - start, local_n, atk, 1.8)
+			var existing := float(data.decode_s16(i * 2)) / 32767.0
+			var s := _sine(freq, t) * env * vol / float(sz)
+			data.encode_s16(i * 2, int(clampf(existing + s, -1.0, 1.0) * 32767.0))
+	return _wav(data)
+
+## Two rising chirps — event start
+func _alert(dur: float, vol: float) -> AudioStreamWAV:
+	var chirp_n := int(dur * 0.4 * RATE)
+	var gap_n   := int(dur * 0.2 * RATE)
+	var n := chirp_n * 2 + gap_n
+	var data := PackedByteArray(); data.resize(n * 2)
+	var atk := int(0.005 * RATE)
+	for chirp in range(2):
+		var f1 := 440.0 if chirp == 0 else 660.0
+		var f2 := 880.0 if chirp == 0 else 1320.0
+		var base := chirp * (chirp_n + gap_n)
+		for i in range(chirp_n):
+			var t := float(base + i) / RATE
+			var freq := lerpf(f1, f2, float(i) / float(chirp_n))
+			var env := _dec(i, chirp_n, atk, 2.0)
+			var s := _sine(freq, t) * env * vol
+			data.encode_s16((base + i) * 2, int(clampf(s, -1.0, 1.0) * 32767.0))
+	return _wav(data)
+
+## Detuned sawtooth buzz — error
+func _buzz(dur: float, vol: float) -> AudioStreamWAV:
+	var n := int(dur * RATE)
+	var data := PackedByteArray(); data.resize(n * 2)
+	var atk := int(0.003 * RATE)
+	for i in range(n):
+		var t := float(i) / RATE
+		var env := _dec(i, n, atk, 2.5)
+		var s := (_saw(180.0, t) + _saw(182.7, t)) * 0.5 * env * vol
+		data.encode_s16(i * 2, int(clampf(s, -1.0, 1.0) * 32767.0))
+	return _wav(data)
+
+## C major pad with vibrato + tremolo, loops every 8 s
 func _pad(dur: float) -> AudioStreamWAV:
 	var n := int(dur * RATE)
 	var data := PackedByteArray(); data.resize(n * 2)
 	for i in range(n):
 		var t := float(i) / RATE
-		var lfo := 0.82 + 0.18 * sin(TAU * 0.14 * t)
-		# C3 + Eb3 + G3 (C minor triad) — 3 sin calls per sample
-		var s := (sin(TAU * 130.81 * t) + 0.55 * sin(TAU * 155.56 * t) + 0.45 * sin(TAU * 196.00 * t)) / 2.0
-		data.encode_s16(i * 2, int(clampf(s * lfo * 0.52, -1.0, 1.0) * 32767.0))
+		var vib := 1.0 + 0.003 * sin(TAU * 3.8 * t)
+		var lfo := 0.84 + 0.16 * sin(TAU * 0.11 * t)
+		# C major triad + octave C, all with gentle vibrato
+		var s := (
+			sin(TAU * 130.81 * vib * t) * 0.40 +
+			sin(TAU * 164.81 * vib * t) * 0.28 +
+			sin(TAU * 196.00 * vib * t) * 0.22 +
+			sin(TAU * 261.63 * vib * t) * 0.10
+		) * lfo * 0.48
+		data.encode_s16(i * 2, int(clampf(s, -1.0, 1.0) * 32767.0))
 	var st := _wav(data)
 	st.loop_mode = AudioStreamWAV.LOOP_FORWARD
 	st.loop_begin = 0; st.loop_end = n - 1
@@ -182,15 +260,16 @@ func _pad(dur: float) -> AudioStreamWAV:
 
 func _wav(data: PackedByteArray) -> AudioStreamWAV:
 	var st := AudioStreamWAV.new()
-	st.format = AudioStreamWAV.FORMAT_16_BITS; st.mix_rate = RATE
-	st.stereo = false; st.data = data; return st
+	st.format = AudioStreamWAV.FORMAT_16_BITS
+	st.mix_rate = RATE; st.stereo = false; st.data = data
+	return st
 
-# ── Persistence ───────────────────────────────────────────────────────────────
+# ── Persistence ──────────────────────────────────────────────────────────────────
 
 func to_dict() -> Dictionary:
 	return {"muted": muted, "music_vol": music_vol, "sfx_vol": sfx_vol}
 
 func from_dict(d: Dictionary) -> void:
-	muted = bool(d.get("muted", false))
-	music_vol = float(d.get("music_vol", -20.0))
-	sfx_vol = float(d.get("sfx_vol", 0.0))
+	muted     = bool(d.get("muted", false))
+	music_vol = float(d.get("music_vol", -18.0))
+	sfx_vol   = float(d.get("sfx_vol", 0.0))
