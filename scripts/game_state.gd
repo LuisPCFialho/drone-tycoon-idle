@@ -32,7 +32,7 @@ var total_deliveries := 0
 
 # --- transient ---
 var earn_boost_mult := 2.0
-var buy_mode := 1
+var buy_mode := 10
 var pending_offline := 0.0
 var pending_offline_seconds := 0.0
 var vdrones: Array = []

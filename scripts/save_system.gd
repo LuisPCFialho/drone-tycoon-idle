@@ -19,6 +19,7 @@ func save_game() -> void:
 		"prestige":     Prestige.to_dict(),
 		"achievements": Achievements.to_dict(),
 		"daily":        Daily.to_dict(),
+		"contracts":    Contracts.to_dict(),
 	}
 	var raw := JSON.stringify(payload)
 	var cs  := AntiCheat.checksum(raw)
@@ -84,6 +85,7 @@ func _apply(data: Dictionary) -> bool:
 	Achievements.from_dict(data.get("achievements", {}))
 	Daily.from_dict(data.get("daily", {}))
 	GameState.from_dict(data.get("game", {}))
+	Contracts.from_dict(data.get("contracts", {}))
 
 	# Offline earnings (validated by AntiCheat)
 	var ts: int = int(data.get("ts", 0))

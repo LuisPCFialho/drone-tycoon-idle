@@ -10,7 +10,10 @@ const DEFS := {
     "storm":    {"name": "Tempestade",         "desc": "Velocidade ÷2, Ganhos ×3!",   "icon": "⛈", "dur": 240.0, "mult": 3.0,  "col": 2, "spd": 0.5, "w": 10},
     "festival": {"name": "Festival da Cidade","desc": "Ganhos ×2.5 por 8 min!",      "icon": "🎉", "dur": 480.0, "mult": 2.5,  "col": 3, "w": 10},
     "vip_pkg":  {"name": "Pacote VIP",        "desc": "Próxima entrega ×25!",         "icon": "💼", "dur": 60.0,  "mult": 25.0, "col": 1, "one_shot": true, "w": 10},
-    "windfall": {"name": "Chuva de Lucros",   "desc": "Ganhos ×8 durante 3 min! RARO!", "icon": "🌟", "dur": 180.0, "mult": 8.0, "col": 1, "w": 2},
+    "windfall":    {"name": "Chuva de Lucros",   "desc": "Ganhos ×8 durante 3 min! RARO!",    "icon": "🌟", "dur": 180.0, "mult": 8.0,  "col": 1, "w": 2},
+    "drone_tech":  {"name": "Tech Drone",         "desc": "Velocidade ×1.5, Ganhos ×1.5!",    "icon": "🤖", "dur": 180.0, "mult": 1.5,  "col": 0, "spd": 1.5, "w": 7},
+    "black_friday":{"name": "Black Friday",       "desc": "Ganhos ×6 por 5 min!",             "icon": "🛒", "dur": 300.0, "mult": 6.0,  "col": 1, "w": 3},
+    "blitz":       {"name": "Missão Blitz",       "desc": "Próxima entrega ×20!",             "icon": "🎯", "dur": 40.0,  "mult": 20.0, "col": 1, "one_shot": true, "w": 5},
 }
 
 const COLORS := [
