@@ -52,10 +52,7 @@ func _process(_delta: float) -> void:
 		_ambient.volume_db = muted_music_db()
 
 func _on_delivered(_amount: float, _hub: int) -> void:
-	var now := Time.get_ticks_msec()
-	if now - _last_sell < 120: return
-	_last_sell = now
-	play("sell", randf_range(0.90, 1.12), -6.0)
+	pass  # delivery sound removed — too repetitive at high drone counts
 
 func play(name: String, pitch := 1.0, vol_db := 0.0) -> void:
 	if muted or not _streams.has(name): return
