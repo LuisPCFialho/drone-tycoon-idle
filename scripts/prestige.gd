@@ -74,7 +74,7 @@ func _soft_reset() -> void:
     gs.current_country = starting_country()
     gs.cities_unlocked = 1
     gs.drones = starting_drones()
-    gs.levels = {"speed": 0, "cargo": 0, "value": 0}
+    gs.levels = {"speed": 0, "cargo": 0, "value": 0, "routes": 0}
     gs.talents = {"global": 0, "speed": 0, "value": 0, "hangar": 0}
     gs.gem_boost = 0
     gs.earn_boost_timer = 0.0

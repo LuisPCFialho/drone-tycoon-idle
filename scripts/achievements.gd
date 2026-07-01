@@ -113,10 +113,10 @@ func check_all_state() -> void:
     check("credits_1t",  gs.credits >= 1_000_000_000_000.0)
     check("earned_10b",  gs.total_earned >= 10_000_000_000.0)
     check("earned_1t",   gs.total_earned >= 1_000_000_000_000.0)
-    var max_lv: int = maxi(int(gs.levels.get("speed", 0)), maxi(int(gs.levels.get("cargo", 0)), int(gs.levels.get("value", 0))))
+    var max_lv: int = maxi(int(gs.levels.get("speed", 0)), maxi(int(gs.levels.get("cargo", 0)), maxi(int(gs.levels.get("value", 0)), int(gs.levels.get("routes", 0)))))
     check("upgrade_25",  max_lv >= 25)
     check("upgrade_100", max_lv >= 100)
-    var min_lv: int = mini(int(gs.levels.get("speed", 0)), mini(int(gs.levels.get("cargo", 0)), int(gs.levels.get("value", 0))))
+    var min_lv: int = mini(int(gs.levels.get("speed", 0)), mini(int(gs.levels.get("cargo", 0)), mini(int(gs.levels.get("value", 0)), int(gs.levels.get("routes", 0)))))
     check("all_25",      min_lv >= 25)
     var max_tal: int = maxi(int(gs.talents.get("global", 0)), maxi(int(gs.talents.get("speed", 0)), maxi(int(gs.talents.get("value", 0)), int(gs.talents.get("hangar", 0)))))
     check("talent_10",   max_tal >= 10)
@@ -189,6 +189,59 @@ func done_count() -> int:
 
 func total_count() -> int:
     return DEFS.size()
+
+## Returns Vector2(current, target) for progress display; Vector2.ZERO if unknown.
+func progress(id: String) -> Vector2:
+    if is_done(id): return Vector2(1.0, 1.0)
+    if not has_node("/root/GameState"): return Vector2.ZERO
+    var gs := GameState
+    match id:
+        "first_delivery":  return Vector2(float(counters.get("deliveries", 0)), 1.0)
+        "deliveries_100":  return Vector2(float(counters.get("deliveries", 0)), 100.0)
+        "deliveries_1k":   return Vector2(float(counters.get("deliveries", 0)), 1000.0)
+        "deliveries_10k":  return Vector2(float(counters.get("deliveries", 0)), 10000.0)
+        "drones_5":        return Vector2(float(gs.drones), 5.0)
+        "drones_25":       return Vector2(float(gs.drones), 25.0)
+        "drones_100":      return Vector2(float(gs.drones), 100.0)
+        "drones_500":      return Vector2(float(gs.drones), 500.0)
+        "credits_1m":      return Vector2(gs.credits, 1_000_000.0)
+        "credits_1b":      return Vector2(gs.credits, 1_000_000_000.0)
+        "credits_1t":      return Vector2(gs.credits, 1_000_000_000_000.0)
+        "earned_10b":      return Vector2(gs.total_earned, 10_000_000_000.0)
+        "earned_1t":       return Vector2(gs.total_earned, 1_000_000_000_000.0)
+        "income_1k":       return Vector2(gs.income_per_sec(), 1000.0)
+        "income_1m":       return Vector2(gs.income_per_sec(), 1_000_000.0)
+        "cities_10":       return Vector2(float(counters.get("cities_total", 0)), 10.0)
+        "cities_50":       return Vector2(float(counters.get("cities_total", 0)), 50.0)
+        "country_2":       return Vector2(float(gs.current_country + 1), 2.0)
+        "country_5":       return Vector2(float(gs.current_country + 1), 5.0)
+        "country_10":      return Vector2(float(gs.current_country + 1), 10.0)
+        "event_first":     return Vector2(float(counters.get("events_total", 0)), 1.0)
+        "event_5":         return Vector2(float(counters.get("events_total", 0)), 5.0)
+        "event_25":        return Vector2(float(counters.get("events_total", 0)), 25.0)
+        "gems_100":        return Vector2(float(gs.gems), 100.0)
+        "gems_spent_500":  return Vector2(float(counters.get("gems_spent", 0)), 500.0)
+        "influence_50":    return Vector2(float(gs.influence_total), 50.0)
+        "prestige_1":      return Vector2(float(Prestige.count), 1.0)
+        "prestige_3":      return Vector2(float(Prestige.count), 3.0)
+        "prestige_5":      return Vector2(float(Prestige.count), 5.0)
+        "upgrade_25":
+            var ml := maxi(int(gs.levels.get("speed", 0)), maxi(int(gs.levels.get("cargo", 0)), maxi(int(gs.levels.get("value", 0)), int(gs.levels.get("routes", 0)))))
+            return Vector2(float(ml), 25.0)
+        "upgrade_100":
+            var ml := maxi(int(gs.levels.get("speed", 0)), maxi(int(gs.levels.get("cargo", 0)), maxi(int(gs.levels.get("value", 0)), int(gs.levels.get("routes", 0)))))
+            return Vector2(float(ml), 100.0)
+        "all_25":
+            var ml := mini(int(gs.levels.get("speed", 0)), mini(int(gs.levels.get("cargo", 0)), mini(int(gs.levels.get("value", 0)), int(gs.levels.get("routes", 0)))))
+            return Vector2(float(ml), 25.0)
+        "talent_10":
+            var mt := maxi(int(gs.talents.get("global", 0)), maxi(int(gs.talents.get("speed", 0)), maxi(int(gs.talents.get("value", 0)), int(gs.talents.get("hangar", 0)))))
+            return Vector2(float(mt), 10.0)
+        "streak_7":
+            return Vector2(float(Daily.streak if has_node("/root/Daily") else 0), 7.0)
+        "streak_30":
+            return Vector2(float(Daily.streak if has_node("/root/Daily") else 0), 30.0)
+    return Vector2.ZERO
 
 func to_dict() -> Dictionary:
     return {"ids": unlocked_ids.duplicate(), "counters": counters.duplicate()}

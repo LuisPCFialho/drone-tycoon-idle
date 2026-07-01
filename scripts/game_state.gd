@@ -9,6 +9,7 @@ const OFFLINE_EFF := 0.5
 const AUTOSAVE_INTERVAL := 15.0
 const EARN_BOOST_DURATION := 300.0
 const MAX_VISUAL_DRONES := 16
+const COMBO_DECAY := 10.0
 
 signal delivered(amount: float, city_index: int)
 signal city_unlocked(index: int)
@@ -23,7 +24,7 @@ var influence_total := 0
 var current_country := 0
 var cities_unlocked := 1          # active delivery cities (capital is always home)
 var drones := 1
-var levels := {"speed": 0, "cargo": 0, "value": 0}
+var levels := {"speed": 0, "cargo": 0, "value": 0, "routes": 0}
 var talents := {"global": 0, "speed": 0, "value": 0, "hangar": 0}
 var gem_boost := 0
 var earn_boost_timer := 0.0
@@ -37,6 +38,8 @@ var pending_offline := 0.0
 var pending_offline_seconds := 0.0
 var vdrones: Array = []
 var _autosave_t := 0.0
+var combo: int = 0
+var _combo_decay_t: float = 0.0
 
 func _ready() -> void:
 	_rebuild_drones()
@@ -57,6 +60,16 @@ func global_mult() -> float:
 		* (1.0 + 0.25 * float(gem_boost)) * Billing.perm_mult * vip_mult() \
 		* Events.current_mult * Prestige.permanent_mult
 
+func route_mult() -> float:
+	return 1.0 + 0.025 * float(levels.get("routes", 0))
+
+func combo_mult() -> float:
+	if combo >= 60: return 2.0
+	if combo >= 30: return 1.5
+	if combo >= 15: return 1.25
+	if combo >= 5:  return 1.1
+	return 1.0
+
 func offline_cap() -> float:
 	var prestige_extra: float = OFFLINE_CAP_BASE * Prestige.extra_offline_pct()
 	return OFFLINE_CAP_BASE + prestige_extra + (79200.0 if Billing.vip else 0.0)
@@ -71,7 +84,7 @@ func _route_dist(r: int) -> float:
 ## Credits for one delivery to a route (weak upgrade gains; scales with country tier).
 func per_delivery(dist: float) -> float:
 	var vf := (1.0 + 0.3 * float(levels["cargo"])) * pow(1.04, float(levels["value"])) * (1.0 + 0.04 * float(talents["value"]))
-	return BASE_DELIV * vf * (1.0 + dist) * Economy.pay_tier(current_country) * global_mult()
+	return BASE_DELIV * vf * (1.0 + dist) * Economy.pay_tier(current_country) * global_mult() * route_mult()
 
 func fleet_scale() -> float:
 	return float(drones) / float(max(1, vdrones.size()))
@@ -105,6 +118,11 @@ func _process(delta: float) -> void:
 	if earn_boost_timer > 0.0:
 		earn_boost_timer = max(0.0, earn_boost_timer - delta)
 	var boost: float = earn_boost_mult if earn_boost_timer > 0.0 else 1.0
+	if _combo_decay_t > 0.0:
+		_combo_decay_t -= delta
+		if _combo_decay_t <= 0.0:
+			combo = 0
+			_combo_decay_t = 0.0
 	var fs := fleet_scale()
 	for v in vdrones:
 		var d := _route_dist(int(v["route"]))
@@ -112,7 +130,9 @@ func _process(delta: float) -> void:
 		v["t"] += rate * float(v["dir"]) * delta
 		if v["t"] >= 1.0:
 			v["t"] = 1.0; v["dir"] = -1
-			var amt := per_delivery(d) * fs * boost
+			combo += 1
+			_combo_decay_t = COMBO_DECAY
+			var amt := per_delivery(d) * fs * boost * combo_mult()
 			credits += amt; total_earned += amt; total_deliveries += 1
 			delivered.emit(amt, 1 + int(v["route"]))
 		elif v["t"] <= 0.0:
@@ -290,7 +310,7 @@ func from_dict(d: Dictionary) -> void:
 	current_country = clampi(int(d.get("current_country", 0)), 0, Economy.num_countries() - 1)
 	cities_unlocked = max(1, int(d.get("cities_unlocked", 1)))
 	drones = max(1, int(d.get("drones", 1)))
-	var lv := {"speed": 0, "cargo": 0, "value": 0}
+	var lv := {"speed": 0, "cargo": 0, "value": 0, "routes": 0}
 	var slv: Dictionary = d.get("levels", {})
 	for k in lv:
 		if slv.has(k): lv[k] = int(slv[k])

@@ -5,11 +5,11 @@ extends Node
 signal completed(slot: int)
 signal refreshed(slot: int)
 
-const SLOT_COUNT := 3
+const SLOT_COUNT := 4
 const EXPIRE_DELAY := 20.0  # seconds before a new contract spawns after claiming
 
 var slots: Array = []
-var _refresh_timers: Array = [0.0, 0.0, 0.0]
+var _refresh_timers: Array = [0.0, 0.0, 0.0, 0.0]
 var _frame := 0
 
 func _ready() -> void:
@@ -97,6 +97,19 @@ func _gen(slot_idx: int) -> Dictionary:
 	var now := int(Time.get_unix_time_from_system())
 	var ips := maxf(GameState.income_per_sec(), 0.5)
 	var d_count := maxi(GameState.drones, 1)
+
+	if slot_idx == 3:
+		var wk_target := maxf(500.0, float(d_count) * 200.0)
+		return {
+			"type": "deliveries", "weekly": true,
+			"label": "Desafio Semanal: entrega %d pacotes" % int(wk_target),
+			"target": wk_target, "progress": 0.0, "earn_base": 0.0,
+			"deadline": now + 604800, "duration": 604800,
+			"reward_credits": ips * 7200.0,
+			"reward_gems": maxi(5, 5 + Prestige.count * 2),
+			"claimed": false, "ready": false,
+		}
+
 	var diff := 1.0 + float(slot_idx) * 1.8
 
 	var types := ["deliveries", "earn", "earn", "deliveries"]

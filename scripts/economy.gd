@@ -6,11 +6,12 @@ var WORLD: Array = []
 
 const UPGRADES := {
 	# Deliberately WEAK gains (player asked: upgrades less powerful), steep cost.
-	"speed": {"name": "Velocidade dos Drones", "base": 80.0, "rate": 1.26, "icon": "ic_speed"},
-	"cargo": {"name": "Capacidade de Carga", "base": 110.0, "rate": 1.28, "icon": "ic_cargo"},
-	"value": {"name": "Valor da Encomenda", "base": 150.0, "rate": 1.30, "icon": "ic_value"},
+	"speed":  {"name": "Velocidade dos Drones", "base": 80.0,  "rate": 1.26, "icon": "ic_speed"},
+	"cargo":  {"name": "Capacidade de Carga",   "base": 110.0, "rate": 1.28, "icon": "ic_cargo"},
+	"value":  {"name": "Valor da Encomenda",    "base": 150.0, "rate": 1.30, "icon": "ic_value"},
+	"routes": {"name": "Rede de Rotas",         "base": 200.0, "rate": 1.32, "icon": "ic_range"},
 }
-const UPGRADE_ORDER := ["speed", "cargo", "value"]
+const UPGRADE_ORDER := ["speed", "cargo", "value", "routes"]
 
 const TALENTS := {
 	"global":  {"name": "Comando Central", "desc": "+6% lucros globais", "max": 100, "icon": "ic_prestige"},

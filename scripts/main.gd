@@ -1,5 +1,5 @@
 extends Control
-## Main scene — Drone Tycoon: Sky Fleet  v1.9.0
+## Main scene — Drone Tycoon: Sky Fleet  v1.10.0
 
 const NAV_H  := 132.0
 const TABS_H := 532.0
@@ -51,11 +51,15 @@ var _expand_btn: Button
 var _expand_detail: Label
 var _streak_lbl: Label
 var _streak_chip: PanelContainer
+var _combo_chip: PanelContainer
+var _combo_lbl: Label
 var _city_prog_fill: Panel
 var _progress_lbl: Label
 var _prestige_btn: Button
 var _prestige_info_lbl: Label
 var _achieve_cells := {}
+var _achieve_prog_fills := {}
+var _achieve_prog_lbls := {}
 var _prestige_ready_prev := false
 var _tap_block_until := 0   # ms; drag-scroll guard so dragging never buys
 
@@ -175,6 +179,13 @@ func _build_hud() -> void:
 	_streak_lbl.add_theme_color_override("font_color", UITheme.AMBER)
 	_streak_lbl.add_theme_font_override("font", UITheme.font("Bold")); sh.add_child(_streak_lbl)
 	r2.add_child(_streak_chip)
+	_combo_chip = PanelContainer.new()
+	_combo_chip.add_theme_stylebox_override("panel", UITheme.stat_chip(UITheme.AMBER))
+	var cch := HBoxContainer.new(); cch.add_theme_constant_override("separation", 3); _combo_chip.add_child(cch)
+	_combo_lbl = Label.new(); _combo_lbl.add_theme_font_size_override("font_size", 17)
+	_combo_lbl.add_theme_color_override("font_color", UITheme.AMBER)
+	_combo_lbl.add_theme_font_override("font", UITheme.font("Bold")); cch.add_child(_combo_lbl)
+	_combo_chip.visible = false; r2.add_child(_combo_chip)
 	_income_lbl = Label.new(); _income_lbl.add_theme_font_size_override("font_size", 21)
 	_income_lbl.add_theme_color_override("font_color", UITheme.GREEN)
 	_income_lbl.add_theme_font_override("font", UITheme.font("Bold"))
@@ -445,7 +456,7 @@ func _build_fleet_tab() -> ScrollContainer:
 	)
 	dr["right"].add_child(_drone_btn); v.add_child(dr["card"])
 
-	for key: String in ["speed", "cargo", "value"]:
+	for key: String in ["speed", "cargo", "value", "routes"]:
 		v.add_child(_make_upgrade_row(key))
 
 	v.add_child(_section("Prestige", UITheme.PRESTIGE, "ic_prestige"))
@@ -581,6 +592,19 @@ func _make_achievement_row(id: String) -> PanelContainer:
 	name_lbl.add_theme_font_override("font", UITheme.font("Bold")); pv.add_child(name_lbl)
 	var desc_lbl := _lbl("Conquista secreta." if secret else str(def["desc"]), 14, UITheme.MUTED)
 	desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; pv.add_child(desc_lbl)
+	if not done and not secret:
+		var prog := Achievements.progress(id)
+		if prog.y > 0.0:
+			var pb_bg := Panel.new(); pb_bg.custom_minimum_size = Vector2(0, 5)
+			pb_bg.add_theme_stylebox_override("panel", UITheme.prog_bg()); pv.add_child(pb_bg)
+			var pb_fill := Panel.new(); pb_fill.set_anchors_preset(Control.PRESET_FULL_RECT)
+			pb_fill.anchor_right = clampf(prog.x / prog.y, 0.0, 1.0)
+			pb_fill.add_theme_stylebox_override("panel", UITheme.prog_fill(UITheme.GOLD))
+			pb_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE; pb_bg.add_child(pb_fill)
+			var prog_lbl := _lbl("%s / %s" % [Fmt.short(prog.x), Fmt.short(prog.y)], 12, UITheme.MUTED)
+			pv.add_child(prog_lbl)
+			_achieve_prog_fills[id] = pb_fill
+			_achieve_prog_lbls[id] = prog_lbl
 	if done:
 		ph.add_child(_icon("ic_check", 26))
 	_achieve_cells[id] = pp
@@ -671,7 +695,7 @@ func _cbuy(color: Color, w := 150.0) -> Button:
 	return b
 
 func _make_upgrade_row(key: String) -> PanelContainer:
-	var accent_map := {"speed": UITheme.ACCENT, "cargo": UITheme.AMBER, "value": UITheme.GREEN}
+	var accent_map := {"speed": UITheme.ACCENT, "cargo": UITheme.AMBER, "value": UITheme.GREEN, "routes": UITheme.CYAN}
 	var accent: Color = accent_map.get(key, UITheme.ACCENT)
 	var r := _row(accent, Economy.UPGRADES[key].get("icon", "ic_speed"))
 	r["title"].text = Economy.UPGRADES[key]["name"]
@@ -776,7 +800,7 @@ func _process(delta: float) -> void:
 	if abs(_disp_credits - GameState.credits) < 1.0: _disp_credits = GameState.credits
 	_credits_lbl.text = Fmt.short(_disp_credits)
 	_gems_lbl.text    = str(GameState.gems)
-	_infl_lbl.text    = str(GameState.influence)
+	_infl_lbl.text    = (Prestige.tier_name() + " · " + str(GameState.influence)) if Prestige.count > 0 else str(GameState.influence)
 	_vip_badge.visible = Billing.vip
 
 	# chip-pop on discrete currency increases
@@ -787,6 +811,11 @@ func _process(delta: float) -> void:
 	var ips := GameState.income_per_sec()
 	_income_lbl.text = "+" + Fmt.short(ips) + "/s"
 	_income_lbl.add_theme_color_override("font_color", Events.color() if Events.is_active() else UITheme.GREEN)
+	if GameState.combo > 0:
+		_combo_chip.visible = true
+		_combo_lbl.text = "🔥×%.1f" % GameState.combo_mult()
+	else:
+		_combo_chip.visible = false
 
 	_country_lbl.text = "%s · %d/%d" % [
 		Economy.country_name(GameState.current_country),
@@ -902,6 +931,12 @@ func _process(delta: float) -> void:
 		Achievements.check("gems_100",     GameState.gems >= 100)
 		_check_income_milestones()
 		_update_contracts()
+		for id: String in _achieve_prog_fills:
+			if Achievements.is_done(id): continue
+			var prog := Achievements.progress(id)
+			if prog.y > 0.0:
+				(_achieve_prog_fills[id] as Panel).anchor_right = clampf(prog.x / prog.y, 0.0, 1.0)
+				(_achieve_prog_lbls[id] as Label).text = "%s / %s" % [Fmt.short(prog.x), Fmt.short(prog.y)]
 
 func _unlock_progress() -> float:
 	var cc := GameState.next_city_cost()
@@ -941,9 +976,10 @@ func _update_nav_dots() -> void:
 
 func _effect(key: String) -> String:
 	match key:
-		"speed": return "+3%/nv velocidade"
-		"cargo": return "+0.3/nv carga"
-		"value": return "+4%/nv valor"
+		"speed":  return "+3%/nv velocidade"
+		"cargo":  return "+0.3/nv carga"
+		"value":  return "+4%/nv valor"
+		"routes": return "+2.5%/nv eficiência de rota"
 	return ""
 
 # ── Signal handlers ──────────────────────────────────────────────────────────────
@@ -1001,6 +1037,8 @@ func _on_achievement(id: String) -> void:
 	Fx.screen_flash(self, UITheme.GOLD, 0.08)
 	if _achieve_cells.has(id):
 		_achieve_cells[id].add_theme_stylebox_override("panel", UITheme.achievement_card(true))
+	if _achieve_prog_fills.has(id):
+		(_achieve_prog_fills[id] as Panel).anchor_right = 1.0
 
 func _on_event_start(id: String) -> void:
 	var def: Dictionary = Events.DEFS.get(id, {})
@@ -1170,7 +1208,7 @@ func _show_settings() -> void:
 	restore.pressed.connect(func(): Fx.press(restore); _toast("A verificar compras...", UITheme.ACCENT); SaveSystem.save_game())
 	box.add_child(restore)
 
-	box.add_child(_lbl("Drone Tycoon: Sky Fleet · v1.9.0 · © 2026 LPCF", 15, UITheme.MUTED))
+	box.add_child(_lbl("Drone Tycoon: Sky Fleet · v1.10.0 · © 2026 LPCF", 15, UITheme.MUTED))
 
 	var reset := Button.new(); reset.text = "Repor progresso"
 	reset.add_theme_font_size_override("font_size", 28); reset.add_theme_font_override("font", UITheme.font("Bold"))
@@ -1326,6 +1364,8 @@ func _update_contracts() -> void:
 		var t_lbl := _mission_time_lbls[i] as Label
 		if s.get("claimed", false):
 			t_lbl.text = "Nova em %ds" % int(rem)
+		elif i == 3:
+			t_lbl.text = "%dd %dh" % [int(rem) / 86400, (int(rem) % 86400) / 3600]
 		else:
 			t_lbl.text = "%d:%02d" % [int(rem) / 60, int(rem) % 60]
 		var ready: bool = s.get("ready", false) and not s.get("claimed", false)
@@ -1347,8 +1387,11 @@ func _build_missions_tab() -> ScrollContainer:
 	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; v.add_child(info)
 
 	for i in range(Contracts.SLOT_COUNT):
+		if i == 3:
+			v.add_child(_section("Desafio Semanal", UITheme.GOLD, "ic_achieve"))
+		var slot_color: Color = UITheme.GOLD if i == 3 else UITheme.CYAN
 		var s: Dictionary = Contracts.slots[i] if i < Contracts.slots.size() else {}
-		var card := _card(UITheme.CYAN); v.add_child(card)
+		var card := _card(slot_color); v.add_child(card)
 		var cv := VBoxContainer.new(); cv.add_theme_constant_override("separation", 8); card.add_child(cv)
 
 		# Top row: title + time remaining
@@ -1365,7 +1408,7 @@ func _build_missions_tab() -> ScrollContainer:
 		pb_bg.add_theme_stylebox_override("panel", UITheme.prog_bg()); cv.add_child(pb_bg)
 		var pb_fill := Panel.new(); pb_fill.set_anchors_preset(Control.PRESET_FULL_RECT)
 		pb_fill.anchor_right = 0.0
-		pb_fill.add_theme_stylebox_override("panel", UITheme.prog_fill(UITheme.CYAN))
+		pb_fill.add_theme_stylebox_override("panel", UITheme.prog_fill(slot_color))
 		pb_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE; pb_bg.add_child(pb_fill)
 		_mission_prog_bars.append(pb_fill)
 
@@ -1383,7 +1426,7 @@ func _build_missions_tab() -> ScrollContainer:
 		_mission_reward_lbls.append(rew_lbl)
 
 		var ci := i
-		var cbtn := _buy_btn(UITheme.CYAN.darkened(0.18))
+		var cbtn := _buy_btn(slot_color.darkened(0.18))
 		cbtn.text = "..."; cbtn.disabled = true
 		cbtn.size_flags_horizontal = Control.SIZE_SHRINK_END
 		cbtn.custom_minimum_size = Vector2(130, 52)
