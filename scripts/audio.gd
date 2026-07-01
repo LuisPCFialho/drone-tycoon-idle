@@ -1,8 +1,17 @@
 extends Node
-## Procedural SFX v2 — 44.1 kHz, richer synthesis, C-major pad.
+## Procedural SFX v2 — 44.1 kHz, richer synthesis.
+## Music: royalty-free tracks by Eric Matyas (www.soundimage.org)
 ## Public API: play(name), tick(), muted, to_dict/from_dict.
 
 const RATE := 44100
+const MUSIC_FILES: Array[String] = [
+	"res://assets/music/technoscape.mp3",
+	"res://assets/music/network.mp3",
+	"res://assets/music/city_of_tomorrow.mp3",
+	"res://assets/music/stratosphere.mp3",
+	"res://assets/music/beepage.mp3",
+]
+
 var muted    := false
 var music_vol := -18.0
 var sfx_vol   := 0.0
@@ -12,14 +21,17 @@ var _next      := 0
 var _last_sell := 0
 var _last_tick := 0
 var _ambient: AudioStreamPlayer
+var _music_tracks: Array = []
+var _music_idx: int = 0
 
 func _ready() -> void:
 	_build_streams()
+	_build_music()
 	for i in range(16):
 		var p := AudioStreamPlayer.new(); add_child(p); _players.append(p)
 	_ambient = AudioStreamPlayer.new(); add_child(_ambient)
-	_ambient.stream = _streams["pad"]
-	_ambient.volume_db = music_vol; _ambient.play()
+	_ambient.finished.connect(_on_music_finished)
+	_start_music()
 	if has_node("/root/GameState"):
 		GameState.delivered.connect(_on_delivered)
 		GameState.city_unlocked.connect(func(_i): play("unlock", 1.0, -3.0))
@@ -44,7 +56,40 @@ func _build_streams() -> void:
 	_streams["daily"]       = _arp([329.63, 415.30, 493.88, 622.25], 0.085, 0.24)
 	_streams["event_start"] = _alert(0.22, 0.22)
 	_streams["error"]       = _buzz(0.14, 0.18)
-	_streams["pad"]         = _pad(8.0)
+	_streams["pad"]         = _pad(8.0)  # fallback if MP3s unavailable
+
+func _load_mp3(path: String) -> AudioStreamMP3:
+	var data := FileAccess.get_file_as_bytes(path)
+	if data.is_empty(): return null
+	var st := AudioStreamMP3.new()
+	st.data = data
+	st.loop = false
+	return st
+
+func _build_music() -> void:
+	for path in MUSIC_FILES:
+		var st := _load_mp3(path)
+		if st != null:
+			_music_tracks.append(st)
+
+func _start_music() -> void:
+	if _music_tracks.is_empty():
+		_ambient.stream = _streams["pad"]
+		_ambient.volume_db = muted_music_db()
+		_ambient.play()
+		return
+	_music_idx = 0
+	_ambient.stream = _music_tracks[0]
+	_ambient.volume_db = muted_music_db()
+	_ambient.play()
+
+func _on_music_finished() -> void:
+	if _music_tracks.is_empty(): return
+	_music_idx = (_music_idx + 1) % _music_tracks.size()
+	_ambient.stream = _music_tracks[_music_idx]
+	_ambient.volume_db = muted_music_db()
+	if not muted:
+		_ambient.play()
 
 func _process(_delta: float) -> void:
 	if _ambient:

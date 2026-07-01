@@ -1,5 +1,5 @@
 extends Control
-## Main scene — Drone Tycoon: Sky Fleet  v1.7.3
+## Main scene — Drone Tycoon: Sky Fleet  v1.8.0
 
 const NAV_H  := 132.0
 const TABS_H := 532.0
@@ -1099,13 +1099,16 @@ func _show_settings() -> void:
 	stats.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	stats.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; box.add_child(stats)
 
+	var attr := _lbl("🎵 Música: Eric Matyas · soundimage.org", 14, UITheme.MUTED)
+	attr.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; box.add_child(attr)
+
 	var restore := _wide_btn(UITheme.ACCENT); restore.text = "Restaurar compras"
 	restore.custom_minimum_size = Vector2(0, 84)
 	restore.add_theme_font_size_override("font_size", 26)
 	restore.pressed.connect(func(): Fx.press(restore); _toast("A verificar compras...", UITheme.ACCENT); SaveSystem.save_game())
 	box.add_child(restore)
 
-	box.add_child(_lbl("Drone Tycoon: Sky Fleet · v1.7.3 · © 2026 LPCF", 15, UITheme.MUTED))
+	box.add_child(_lbl("Drone Tycoon: Sky Fleet · v1.8.0 · © 2026 LPCF", 15, UITheme.MUTED))
 
 	var reset := Button.new(); reset.text = "Repor progresso"
 	reset.add_theme_font_size_override("font_size", 28); reset.add_theme_font_override("font", UITheme.font("Bold"))
