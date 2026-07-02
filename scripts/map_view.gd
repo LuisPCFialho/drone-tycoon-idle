@@ -29,6 +29,15 @@ var _hub_home: Texture2D
 var _hub_city: Texture2D
 var _hub_city2: Texture2D
 var _sea_tex: GradientTexture2D
+var _grid_tile: Texture2D
+var _coin: Texture2D
+var _lock: Texture2D
+var _sun: Texture2D
+var _aurora: Texture2D
+
+# --- projection fit + cinematic camera ---
+var _bbox := Rect2(0, 0, 1, 1)
+var _cam_tween: Tween
 
 # --- transient state ---
 var _pops: Array = []                 # floating "+credits" labels
@@ -41,8 +50,10 @@ var _flash: Dictionary = {}           # city_index -> remaining flash time on de
 # --- palette (Aurora Logistics) ---
 const VOID      := Color(0.027, 0.043, 0.086)   # #070B16
 const MIDNIGHT  := Color(0.055, 0.082, 0.149)   # #0E1526
-const LAND      := Color(0.10, 0.17, 0.26)
-const LAND_HI   := Color(0.17, 0.27, 0.40)
+const SEA_TOP   := Color(0.04, 0.09, 0.19)      # #0A1730 — distinct from UI chrome
+const SEA_BOT   := Color(0.07, 0.16, 0.30)      # #122A4D
+const LAND      := Color(0.14, 0.22, 0.35)
+const LAND_HI   := Color(0.22, 0.34, 0.50)
 const INK       := Color(0.949, 0.965, 1.0)     # #F2F6FF
 const MUTED     := Color(0.529, 0.580, 0.690)   # #8794B0
 const SKY       := Color(0.290, 0.549, 1.0)     # #4A8CFF
@@ -63,17 +74,45 @@ func _ready() -> void:
 	_hub_home = load("res://assets/art/hub_home.png")
 	_hub_city = load("res://assets/art/hub_city.png")
 	_hub_city2 = load("res://assets/art/hub_city2.png")
+	_grid_tile = load("res://assets/art/grid_tile.png")
+	_coin = load("res://assets/art/coin.png")
+	_lock = load("res://assets/art/ic_lock.png")
+	_sun = load("res://assets/art/sun_glow.png")
+	_aurora = load("res://assets/art/aurora_band.png")
+	texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED   # lets the holo grid tile
 	GameState.delivered.connect(_on_delivered)
-	GameState.country_changed.connect(func(_i): _reset_view())
+	GameState.country_changed.connect(func(_i): _recalc_bbox(); _reset_view(); reveal_country())
 	# cached sea gradient (replaces 40 draw_rect calls per frame)
 	var sg := Gradient.new()
-	sg.set_color(0, VOID); sg.set_color(1, MIDNIGHT)
+	sg.set_color(0, SEA_TOP); sg.set_color(1, SEA_BOT)
 	_sea_tex = GradientTexture2D.new()
 	_sea_tex.gradient = sg
 	_sea_tex.fill_from = Vector2(0, 0); _sea_tex.fill_to = Vector2(0, 1)
 	_sea_tex.width = 4; _sea_tex.height = 256
 	_seed_ambiance()
+	_recalc_bbox()
 	set_process(true)
+
+## Bounding box of the current country's outline + cities (map space), so the
+## projection fills the band instead of assuming the full unit square.
+func _recalc_bbox() -> void:
+	var ci := GameState.current_country
+	var pts := Economy.country_outline(ci)
+	var cities := Economy.country_cities(ci)
+	if pts.is_empty() and cities.is_empty():
+		_bbox = Rect2(0, 0, 1, 1)
+		return
+	var minp := Vector2(INF, INF)
+	var maxp := Vector2(-INF, -INF)
+	for p in pts:
+		minp = minp.min(p); maxp = maxp.max(p)
+	for c in cities:
+		var cp := Vector2(c["x"], c["y"])
+		minp = minp.min(cp); maxp = maxp.max(cp)
+	var r := Rect2(minp, maxp - minp)
+	if r.size.x < 0.001 or r.size.y < 0.001:
+		r = Rect2(0, 0, 1, 1)
+	_bbox = r
 
 func _reset_view() -> void:
 	zoom = 1.0
@@ -88,10 +127,10 @@ func _seed_ambiance() -> void:
 	for i in range(3):
 		_clouds.append({
 			"x": rng.randf(),
-			"y": rng.randf_range(0.04, 0.34),
+			"y": rng.randf_range(0.05, 0.45),
 			"depth": i,
 			"speed": 0.006 + float(i) * 0.006,
-			"scale": 0.5 + float(i) * 0.35,
+			"scale": 1.6 + float(i) * 0.5,
 		})
 	# faint star/dust field (normalized coords, slow upward drift)
 	for _i in range(14):
@@ -136,20 +175,63 @@ func _process(delta: float) -> void:
 	_flash = fk
 	queue_redraw()
 
-func _proj(p: Vector2) -> Vector2:
+func _band_ctr() -> Vector2:
+	return Vector2(size.x * 0.5, band_top + (band_bottom - band_top) * 0.5)
+
+## Projection without zoom/pan: fits the country bbox to the band (uniform scale).
+func _base_proj(p: Vector2) -> Vector2:
 	var bw := size.x
 	var bh := band_bottom - band_top
-	var side: float = min(bw, bh) * 0.92
-	var ox: float = (bw - side) * 0.5
-	var oy: float = band_top + (bh - side) * 0.5
-	var base := Vector2(ox + p.x * side, oy + p.y * side)
-	# apply zoom + pan around the band centre
-	var ctr := Vector2(bw * 0.5, band_top + bh * 0.5)
-	return ctr + (base - ctr) * zoom + pan
+	var s: float = minf(bw / _bbox.size.x, bh / _bbox.size.y) * 0.86
+	return _band_ctr() + (p - _bbox.get_center()) * s
+
+func _proj(p: Vector2) -> Vector2:
+	var ctr := _band_ctr()
+	return ctr + (_base_proj(p) - ctr) * zoom + pan
+
+## Cinematic punch-in on a just-unlocked city, then ease back out.
+func focus_city(idx: int) -> void:
+	if Fx.reduce_motion or not _touches.is_empty():
+		return
+	var cities := Economy.country_cities(GameState.current_country)
+	if idx < 0 or idx >= cities.size():
+		return
+	if _cam_tween != null and _cam_tween.is_valid():
+		_cam_tween.kill()
+	var pt := Vector2(cities[idx]["x"], cities[idx]["y"])
+	var tz := 1.8
+	var tp := -(_base_proj(pt) - _band_ctr()) * tz
+	_cam_tween = create_tween()
+	_cam_tween.set_parallel(true)
+	_cam_tween.tween_property(self, "zoom", tz, 0.5).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	_cam_tween.tween_property(self, "pan", tp, 0.5).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	_cam_tween.chain().tween_interval(0.7)
+	_cam_tween.chain().tween_property(self, "zoom", 1.0, 0.6).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
+	_cam_tween.tween_property(self, "pan", Vector2.ZERO, 0.6).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
+
+## Zoom-out reveal when arriving in a new country.
+func reveal_country() -> void:
+	if Fx.reduce_motion:
+		return
+	if _cam_tween != null and _cam_tween.is_valid():
+		_cam_tween.kill()
+	zoom = 2.2
+	var cities := Economy.country_cities(GameState.current_country)
+	if not cities.is_empty():
+		var pt := Vector2(cities[0]["x"], cities[0]["y"])
+		pan = -(_base_proj(pt) - _band_ctr()) * zoom
+	_cam_tween = create_tween()
+	_cam_tween.set_parallel(true)
+	_cam_tween.tween_property(self, "zoom", 1.0, 1.0).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	_cam_tween.tween_property(self, "pan", Vector2.ZERO, 1.0).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 
 # ---------------------------------------------------------------- input (zoom/pan)
 
 func _gui_input(event: InputEvent) -> void:
+	# any interaction cancels the cinematic camera — the player always wins
+	if _cam_tween != null and _cam_tween.is_valid():
+		if event is InputEventScreenTouch or event is InputEventScreenDrag or event is InputEventMouseButton:
+			_cam_tween.kill()
 	if event is InputEventScreenTouch:
 		var t := event as InputEventScreenTouch
 		if t.pressed:
@@ -212,6 +294,7 @@ func _draw() -> void:
 	var w := size.x
 	var h := band_bottom - band_top
 	_draw_sea(w, h)
+	_draw_horizon_light(w, h)
 	_draw_grid(w, h)
 	_draw_caustics(w, h)
 	_draw_clouds(w, h)
@@ -241,6 +324,15 @@ func _draw_sea(w: float, h: float) -> void:
 	var cyc := 0.5 + 0.5 * sin(_t * 0.05)
 	var tint := Color(1, 1, 1).lerp(Color(0.86, 0.92, 1.0), cyc * 0.35)
 	draw_texture_rect(_sea_tex, Rect2(0, band_top, w, h), false, tint)
+
+## Warm sun glow at top-right + slowly drifting aurora ribbon on the horizon —
+## the light source that gives the scene contrast against the cyan coast.
+func _draw_horizon_light(w: float, _h: float) -> void:
+	if _sun != null:
+		draw_texture_rect(_sun, Rect2(w - 300.0, band_top - 60.0, 360.0, 360.0), false, Color(1.0, 0.72, 0.35, 0.16))
+	if _aurora != null:
+		var drift := sin(_t * 0.07) * 40.0
+		draw_texture_rect(_aurora, Rect2(-60.0 + drift, band_top, w + 120.0, 90.0), false, Color(1, 1, 1, 0.22))
 
 func _draw_grid(w: float, h: float) -> void:
 	# perspective dot/line grid converging toward a horizon near band_top
@@ -280,8 +372,8 @@ func _draw_clouds(w: float, h: float) -> void:
 		var px := float(c["x"]) * (w + dim.x) - dim.x * 0.5
 		var py := band_top + float(c["y"]) * h
 		var depth: int = int(c["depth"])
-		var alpha := 0.10 + 0.06 * float(depth)
-		draw_texture_rect(_cloud, Rect2(px, py, dim.x, dim.y), false, Color(1, 1, 1, alpha))
+		var alpha := 0.05 + 0.03 * float(depth)
+		draw_texture_rect(_cloud, Rect2(px, py, dim.x, dim.y), false, Color(0.62, 0.78, 1.0, alpha))
 
 func _draw_stars(w: float, h: float) -> void:
 	for s in _stars:
@@ -321,6 +413,12 @@ func _draw_landmass(outline: PackedVector2Array) -> void:
 	for p in outline:
 		pts.append(_proj(p))
 
+	# drop shadow: land visibly lifts off the sea
+	var sh := PackedVector2Array()
+	for q in pts:
+		sh.append(q + Vector2(5, 9))
+	draw_colored_polygon(sh, Color(SHADOW.r, SHADOW.g, SHADOW.b, 0.5))
+
 	# soft outer glow underlay (a few expanding faint strokes)
 	var closed := pts
 	closed.append(pts[0])
@@ -337,6 +435,12 @@ func _draw_landmass(outline: PackedVector2Array) -> void:
 	for q in pts:
 		inner.append(q.lerp(ctr, 0.10))
 	draw_colored_polygon(inner, Color(LAND_HI.r, LAND_HI.g, LAND_HI.b, 0.45))
+	# holo survey grid clipped to the landmass (repeat-tiled via uv > 1)
+	if _grid_tile != null:
+		var uvs := PackedVector2Array()
+		for q in pts:
+			uvs.append(q / 64.0)
+		draw_colored_polygon(pts, Color(CYAN.r, CYAN.g, CYAN.b, 0.06), uvs, _grid_tile)
 
 	# animated holo coastline: wide soft glow + bright thin breathing rim
 	var glow := 0.5 + 0.5 * sin(_t * 1.5)
@@ -399,8 +503,12 @@ func _draw_drones(cap: Vector2, cities: Array) -> void:
 		var ctrl := _route_ctrl(cap, b, route)
 		var tval: float = float(v["t"])
 		var base := _route_point(cap, ctrl, b, tval)
-		# ambient micro-bob
-		var bob := sin(_t * 2.4 + float(di) * 1.7) * 2.5
+		# takeoff/landing ease: shrink + settle near pads instead of instant flips
+		var edge := minf(tval, 1.0 - tval)
+		var k := clampf(edge / 0.08, 0.0, 1.0)
+		var dsc := lerpf(0.65, 1.0, k)
+		# ambient micro-bob (suppressed near pads so the drone visibly descends)
+		var bob := sin(_t * 2.4 + float(di) * 1.7) * 2.5 * k
 		var pos := base + Vector2(0, bob)
 
 		# trail history
@@ -412,9 +520,9 @@ func _draw_drones(cap: Vector2, cities: Array) -> void:
 		_draw_trail(hist, di)
 
 		# soft ground shadow (offset down)
-		draw_circle(pos + Vector2(0, 14), 12.0, Color(SHADOW.r, SHADOW.g, SHADOW.b, 0.30))
+		draw_circle(pos + Vector2(0, 14.0 * dsc), 12.0 * dsc, Color(SHADOW.r, SHADOW.g, SHADOW.b, 0.30))
 		# under-glow
-		draw_circle(pos, 16.0, Color(SKY.r, SKY.g, SKY.b, 0.10))
+		draw_circle(pos, 16.0 * dsc, Color(SKY.r, SKY.g, SKY.b, 0.10))
 
 		# carried package on outbound leg (world-space: hangs below the drone)
 		if int(v["dir"]) == 1:
@@ -430,7 +538,7 @@ func _draw_drones(cap: Vector2, cities: Array) -> void:
 		ang += sin(_t * 2.0 + float(di) * 1.3) * 0.06
 		var tex: Texture2D = _drone_tex[di % _drone_tex.size()]
 		if tex != null:
-			draw_set_transform(pos, ang, Vector2.ONE)
+			draw_set_transform(pos, ang, Vector2(dsc, dsc))
 			draw_texture_rect(tex, Rect2(-20, -20, 40, 40), false)
 			draw_set_transform_matrix(Transform2D.IDENTITY)
 
@@ -520,6 +628,10 @@ func _delivery_flash(p: Vector2, col: Color, t: float) -> void:
 	var r := 14.0 + (1.0 - f) * 34.0
 	draw_arc(p, r, 0, TAU, 28, Color(col.r, col.g, col.b, f * 0.8), 2.5)
 	draw_line(p, p + Vector2(0, -46.0 * (1.0 - f) - 8.0), Color(col.r, col.g, col.b, f * 0.35), 3.0)
+	# parcel visibly dropping onto the pad (clocked by the same flash timer)
+	if _package != null and t > 0.2:
+		var drop := (0.5 - t) * 30.0
+		draw_texture_rect(_package, Rect2(p.x - 9.0, p.y - 26.0 + drop, 18, 18), false, Color(1, 1, 1, f))
 
 # ---------------------------------------------------------------- labels
 
@@ -537,13 +649,15 @@ func _label(p: Vector2, text: String, col: Color) -> void:
 func _cost_chip(p: Vector2, cost: String) -> void:
 	if _font == null:
 		return
-	var text := "🔒 " + cost
+	# lives ABOVE the marker (name pills live below) so lanes never collide
 	var lw := 200.0
-	var tw := _font.get_string_size(text, HORIZONTAL_ALIGNMENT_CENTER, -1, 15).x
-	var pill := Rect2(p.x - tw * 0.5 - 9.0, p.y + 22.0, tw + 18.0, 22.0)
+	var tw := _font.get_string_size(cost, HORIZONTAL_ALIGNMENT_CENTER, -1, 15).x
+	var pill := Rect2(p.x - tw * 0.5 - 9.0 - 9.0, p.y - 44.0, tw + 18.0 + 18.0, 22.0)
 	draw_rect(pill, Color(MIDNIGHT.r, MIDNIGHT.g, MIDNIGHT.b, 0.62), true)
 	draw_rect(pill, Color(GOLD.r, GOLD.g, GOLD.b, 0.30), false, 1.0)
-	draw_string(_font, Vector2(p.x - lw * 0.5, p.y + 38.0), text, HORIZONTAL_ALIGNMENT_CENTER, lw, 15, Color(GOLD.r, GOLD.g, GOLD.b, 0.95))
+	if _lock != null:
+		draw_texture_rect(_lock, Rect2(pill.position.x + 5.0, pill.position.y + 4.5, 13, 13), false, Color(GOLD.r, GOLD.g, GOLD.b, 0.95))
+	draw_string(_font, Vector2(p.x - lw * 0.5 + 8.0, p.y - 28.0), cost, HORIZONTAL_ALIGNMENT_CENTER, lw, 15, Color(GOLD.r, GOLD.g, GOLD.b, 0.95))
 
 # ---------------------------------------------------------------- pops / fx
 
@@ -555,17 +669,25 @@ func _on_delivered(amount: float, city_index: int) -> void:
 	_flash[idx] = 0.5
 	if _pops.size() > POP_CAP:
 		return
-	_pops.append({"text": "+" + Fmt.short(amount), "x": p.x, "y": p.y - 22.0, "life": 1.0})
+	_pops.append({"text": "+" + Fmt.short(amount), "x": p.x, "y": p.y - 48.0, "life": 1.0})
 
 func _draw_pops() -> void:
 	if _font == null:
 		return
 	for p in _pops:
 		var life: float = float(p["life"])
-		var a: float = clamp(life, 0.0, 1.0)
-		# spring-up scale fade: subtle glow then text
-		var px: float = float(p["x"])
+		var a: float = clampf(life, 0.0, 1.0)
+		# spring overshoot in, settle, drift with a light sideways arc
+		var age := 1.0 - life
+		var sc := lerpf(0.5, 1.15, clampf(age / 0.12, 0.0, 1.0))
+		if age > 0.12:
+			sc = lerpf(1.15, 1.0, clampf((age - 0.12) / 0.15, 0.0, 1.0))
+		var px: float = float(p["x"]) + sin(life * 3.0) * 6.0
 		var py: float = float(p["y"])
 		var txt: String = String(p["text"])
-		draw_string(_font, Vector2(px - 50.0, py + 1.0), txt, HORIZONTAL_ALIGNMENT_CENTER, 100.0, 24, Color(SHADOW.r, SHADOW.g, SHADOW.b, a * 0.55))
-		draw_string(_font, Vector2(px - 50.0, py), txt, HORIZONTAL_ALIGNMENT_CENTER, 100.0, 24, Color(MINT.r, MINT.g, MINT.b, a))
+		draw_set_transform(Vector2(px, py), 0.0, Vector2(sc, sc))
+		if _coin != null:
+			draw_texture_rect(_coin, Rect2(-64.0, -11.0, 18, 18), false, Color(1, 1, 1, a))
+		draw_string(_font, Vector2(-42.0, 2.0), txt, HORIZONTAL_ALIGNMENT_CENTER, 100.0, 24, Color(SHADOW.r, SHADOW.g, SHADOW.b, a * 0.8))
+		draw_string(_font, Vector2(-42.0, 0.0), txt, HORIZONTAL_ALIGNMENT_CENTER, 100.0, 24, Color(MINT.r, MINT.g, MINT.b, a))
+		draw_set_transform_matrix(Transform2D.IDENTITY)

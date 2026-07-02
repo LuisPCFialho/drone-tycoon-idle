@@ -1,5 +1,5 @@
 extends Control
-## Main scene — Drone Tycoon: Sky Fleet  v1.12.0
+## Main scene — Drone Tycoon: Sky Fleet  v1.13.0
 
 const NAV_H  := 132.0
 const TABS_H := 532.0
@@ -15,7 +15,7 @@ var _nav_btns: Array
 var _nav_icons: Array
 var _nav_labels: Array
 var _nav_dots: Array
-var _nav_ind: ColorRect
+var _nav_ind: Panel
 var _toasts: VBoxContainer
 
 # HUD
@@ -57,6 +57,7 @@ var _combo_chip: PanelContainer
 var _combo_lbl: Label
 var _city_prog_fill: Panel
 var _progress_lbl: Label
+var _city_list_box: VBoxContainer
 var _prestige_btn: Button
 var _prestige_info_lbl: Label
 var _achieve_cells := {}
@@ -75,6 +76,8 @@ var _mission_claim_btns: Array = []
 var _mission_reward_lbls: Array = []
 var _mission_x2_btns: Array = []
 var _mission_reroll_btns: Array = []
+var _mission_gem_lbls: Array = []
+var _mission_gem_icons: Array = []
 
 # Income milestone celebration
 const INCOME_MILESTONES: Array = [1000.0, 10000.0, 100000.0, 1000000.0, 10000000.0, 100000000.0, 1000000000.0]
@@ -83,6 +86,7 @@ var _income_milestone_idx := 0
 
 # Floating delivery-earnings throttle
 var _deliver_throttle := 0
+var _fountain_counter := 0
 
 func _ready() -> void:
 	if OS.has_feature("mobile"):
@@ -105,11 +109,66 @@ func _ready() -> void:
 	var loaded := SaveSystem.load_game()
 	_disp_credits = GameState.credits
 	_prev_gems = GameState.gems; _prev_infl = GameState.influence
+	_rebuild_city_list()
+	_switch_tab(0)
+	if Fx.reduce_motion:
+		_post_boot(loaded)
+	else:
+		_boot_intro(loaded)
+
+## Welcome popups run only after the boot ceremony so it is never covered.
+func _post_boot(loaded: bool) -> void:
 	if loaded and GameState.pending_offline > 1.0:
 		_show_offline_popup(GameState.pending_offline, GameState.pending_offline_seconds)
 	elif Daily.pending:
 		_show_daily_popup()
-	_switch_tab(0)
+
+## First-launch ceremony: branded cover, drone fly-through, then UI cascade.
+func _boot_intro(loaded: bool) -> void:
+	var vs := get_viewport_rect().size
+	var layer := CanvasLayer.new(); layer.layer = 200
+	add_child(layer)
+	var cover := ColorRect.new(); cover.color = UITheme.BG0
+	cover.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	layer.add_child(cover)
+	var box := VBoxContainer.new()
+	box.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_theme_constant_override("separation", 6)
+	cover.add_child(box)
+	var t1 := _lbl("DRONE TYCOON", 44, UITheme.INK)
+	t1.add_theme_font_override("font", UITheme.font("Bold"))
+	t1.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; box.add_child(t1)
+	var t2 := _lbl("SKY FLEET", 20, UITheme.CYAN)
+	t2.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; box.add_child(t2)
+	var dr := TextureRect.new(); dr.texture = _opt_tex("drone_blue")
+	dr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	dr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	dr.size = Vector2(96, 96)
+	dr.position = Vector2(-120, vs.y * 0.40)
+	dr.rotation = 0.10
+	cover.add_child(dr)
+
+	_hud.offset_top = -160.0
+	_map.zoom = 1.15
+	for i in range(_adbar.get_child_count()):
+		var pill := _adbar.get_child(i) as Control
+		pill.pivot_offset = pill.size * 0.5
+		pill.scale = Vector2(0.8, 0.8)
+
+	var tw := create_tween()
+	tw.tween_property(dr, "position:x", vs.x + 140.0, 0.9).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tw.tween_property(cover, "modulate:a", 0.0, 0.35)
+	tw.parallel().tween_property(_hud, "offset_top", 20.0, 0.45).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.parallel().tween_property(_map, "zoom", 1.0, 0.6).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	for i in range(_adbar.get_child_count()):
+		var pill := _adbar.get_child(i) as Control
+		tw.parallel().tween_property(pill, "scale", Vector2.ONE, 0.3).set_delay(float(i) * 0.06).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_callback(func():
+		if is_instance_valid(layer):
+			layer.queue_free()
+		_post_boot(loaded)
+	)
 
 # ── Background (layered depth) ────────────────────────────────────────────────
 
@@ -137,7 +196,7 @@ func _build_map() -> void:
 		var vr := TextureRect.new(); vr.texture = vig
 		vr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; vr.stretch_mode = TextureRect.STRETCH_SCALE
 		vr.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		vr.modulate = Color(1, 1, 1, 0.6); vr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		vr.modulate = Color(1, 1, 1, 0.3); vr.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		add_child(vr)
 
 # ── HUD ───────────────────────────────────────────────────────────────────────
@@ -185,10 +244,11 @@ func _build_hud() -> void:
 	_streak_lbl.add_theme_font_override("font", UITheme.font("Bold")); sh.add_child(_streak_lbl)
 	r2.add_child(_streak_chip)
 	_combo_chip = PanelContainer.new()
-	_combo_chip.add_theme_stylebox_override("panel", UITheme.stat_chip(UITheme.AMBER))
+	_combo_chip.add_theme_stylebox_override("panel", UITheme.stat_chip(UITheme.ORANGE))
 	var cch := HBoxContainer.new(); cch.add_theme_constant_override("separation", 3); _combo_chip.add_child(cch)
+	cch.add_child(_icon("ic_boost", 18))
 	_combo_lbl = Label.new(); _combo_lbl.add_theme_font_size_override("font_size", 17)
-	_combo_lbl.add_theme_color_override("font_color", UITheme.AMBER)
+	_combo_lbl.add_theme_color_override("font_color", UITheme.ORANGE)
 	_combo_lbl.add_theme_font_override("font", UITheme.font("Bold")); cch.add_child(_combo_lbl)
 	_combo_chip.visible = false; r2.add_child(_combo_chip)
 	_income_lbl = Label.new(); _income_lbl.add_theme_font_size_override("font_size", 21)
@@ -335,12 +395,13 @@ func _build_nav() -> void:
 	for i in defs.size():
 		nav.add_child(_make_nav_btn(defs[i][0], defs[i][1], i))
 
-	# sliding accent indicator resting on top edge of the nav bar
-	_nav_ind = ColorRect.new(); _nav_ind.color = UITheme.ACCENT
+	# sliding accent indicator resting on top edge of the nav bar (glowing pill)
+	_nav_ind = Panel.new()
+	_nav_ind.add_theme_stylebox_override("panel", UITheme.prog_fill(UITheme.ACCENT.lightened(0.15)))
 	_nav_ind.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_nav_ind.anchor_left = 0; _nav_ind.anchor_right = 0
 	_nav_ind.anchor_top = 1; _nav_ind.anchor_bottom = 1
-	_nav_ind.offset_top = -NAV_H; _nav_ind.offset_bottom = -NAV_H + 4
+	_nav_ind.offset_top = -NAV_H - 2; _nav_ind.offset_bottom = -NAV_H + 4
 	add_child(_nav_ind)
 
 func _make_nav_btn(icon_name: String, label_text: String, idx: int) -> Button:
@@ -538,7 +599,47 @@ func _build_cities_tab() -> ScrollContainer:
 		else: Fx.error_shake(_expand_btn)
 	)
 	er["right"].add_child(_expand_btn); v.add_child(er["card"])
+
+	v.add_child(_section("Rede de cidades", UITheme.CYAN, "ic_city"))
+	_city_list_box = VBoxContainer.new()
+	_city_list_box.add_theme_constant_override("separation", 7)
+	v.add_child(_city_list_box)
+	_rebuild_city_list()
 	return r[0]
+
+## One compact status row per city of the current country (fills the Cidades tab).
+func _rebuild_city_list() -> void:
+	if _city_list_box == null: return
+	for c in _city_list_box.get_children():
+		c.queue_free()
+	var ci := GameState.current_country
+	var cities := Economy.country_cities(ci)
+	for i in range(cities.size()):
+		var row := PanelContainer.new()
+		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var h := HBoxContainer.new(); h.add_theme_constant_override("separation", 8); row.add_child(h)
+		var nm := _lbl(str(cities[i]["name"]), 17, UITheme.INK)
+		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		if i == 0:
+			row.add_theme_stylebox_override("panel", UITheme.solid(UITheme.PANEL2.lerp(UITheme.GOLD, 0.10), 14))
+			h.add_child(_icon("ic_city", 22)); h.add_child(nm)
+			var tag := _lbl("SEDE", 14, UITheme.GOLD)
+			tag.add_theme_font_override("font", UITheme.font("Bold")); h.add_child(tag)
+		elif i <= GameState.cities_unlocked:
+			row.add_theme_stylebox_override("panel", UITheme.solid(UITheme.PANEL2.lerp(UITheme.CYAN, 0.08), 14))
+			h.add_child(_icon("ic_range", 22)); h.add_child(nm)
+			h.add_child(_icon("ic_check", 20))
+		elif i == GameState.cities_unlocked + 1:
+			row.add_theme_stylebox_override("panel", UITheme.solid(UITheme.PANEL2.lerp(UITheme.ACCENT, 0.10), 14))
+			h.add_child(_icon("ic_city", 22)); h.add_child(nm)
+			var cost := _lbl(Fmt.short(Economy.city_unlock_cost(ci, GameState.cities_unlocked)), 15, UITheme.GOLD)
+			cost.add_theme_font_override("font", UITheme.font("Bold")); h.add_child(cost)
+		else:
+			row.add_theme_stylebox_override("panel", UITheme.solid(UITheme.PANEL2.darkened(0.15), 14))
+			nm.add_theme_color_override("font_color", UITheme.MUTED)
+			h.add_child(_icon("ic_lock", 20)); h.add_child(nm)
+		_make_scrollable(row)
+		_city_list_box.add_child(row)
 
 # ── Talents tab ─────────────────────────────────────────────────────────────────
 
@@ -619,6 +720,7 @@ func _make_achievement_row(id: String) -> PanelContainer:
 			pb_bg.add_theme_stylebox_override("panel", UITheme.prog_bg()); pv.add_child(pb_bg)
 			var pb_fill := Panel.new(); pb_fill.set_anchors_preset(Control.PRESET_FULL_RECT)
 			pb_fill.anchor_right = clampf(prog.x / prog.y, 0.0, 1.0)
+			pb_fill.visible = pb_fill.anchor_right >= 0.02
 			pb_fill.add_theme_stylebox_override("panel", UITheme.prog_fill(UITheme.GOLD))
 			pb_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE; pb_bg.add_child(pb_fill)
 			var prog_lbl := _lbl("%s / %s" % [Fmt.short(prog.x), Fmt.short(prog.y)], 12, UITheme.MUTED)
@@ -736,6 +838,8 @@ func _make_talent_row(key: String) -> PanelContainer:
 	var r := _row(UITheme.VIOLET, p.get("icon", "ic_prestige"))
 	r["title"].text = p["name"]
 	var btn := _cbuy(UITheme.VIOLET.darkened(0.10), 120.0)
+	btn.icon = _opt_tex("ic_prestige"); btn.expand_icon = true
+	btn.add_theme_constant_override("icon_max_width", 20)
 	btn.pressed.connect(func():
 		if not _can_tap(): return
 		if GameState.buy_talent(key):
@@ -753,6 +857,8 @@ func _make_gem_row(id: String) -> PanelContainer:
 	r["title"].text = p["name"]
 	r["detail"].text = p["desc"]; r["detail"].autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	var btn := _cbuy(UITheme.CYAN.darkened(0.18), 120.0)
+	btn.icon = _opt_tex("ic_gems"); btn.expand_icon = true
+	btn.add_theme_constant_override("icon_max_width", 20)
 	btn.pressed.connect(func(): _buy_gem(id, btn))
 	r["right"].add_child(btn)
 	_gem_rows[id] = {"btn": btn}
@@ -839,11 +945,11 @@ func _process(delta: float) -> void:
 	_income_lbl.text = "+" + Fmt.short(ips) + "/s"
 	_income_lbl.add_theme_color_override("font_color", Events.color() if Events.is_active() else UITheme.GREEN)
 	var cm := GameState.combo_mult()
-	if GameState.combo > 0:
+	if cm > 1.0:
 		_combo_chip.visible = true
-		_combo_lbl.text = "🔥×%.1f" % cm
+		_combo_lbl.text = "×%.2f" % cm
 		if cm > _prev_combo_mult:
-			Fx.chip_pop(_combo_chip, UITheme.AMBER)
+			Fx.chip_pop(_combo_chip, UITheme.ORANGE)
 	else:
 		_combo_chip.visible = false
 	_prev_combo_mult = cm
@@ -858,13 +964,13 @@ func _process(delta: float) -> void:
 	_map.band_bottom = _adbar.position.y - 8.0
 
 	# progress ribbon (HUD): % to next city or expand
-	_ribbon_fill.anchor_right = _unlock_progress()
+	_set_fill(_ribbon_fill, _unlock_progress())
 	# cities tab progress bar: strictly city unlock progress
 	var _cc := GameState.next_city_cost()
-	_city_prog_fill.anchor_right = clampf(GameState.credits / _cc, 0.0, 1.0) if _cc > 0.0 else 1.0
+	_set_fill(_city_prog_fill, clampf(GameState.credits / _cc, 0.0, 1.0) if _cc > 0.0 else 1.0)
 
 	if Events.is_active():
-		_event_timer_bar.anchor_right = Events.time_pct()
+		_set_fill(_event_timer_bar, Events.time_pct())
 
 	for m in _mode_btns:
 		var active: bool = (GameState.buy_mode == int(m))
@@ -891,7 +997,7 @@ func _process(delta: float) -> void:
 		var tr: Dictionary = _talent_rows[key]
 		var tbtn: Button = tr["btn"]
 		if lvl >= int(tp["max"]):
-			tbtn.text = "MÁX"; tbtn.disabled = true
+			tbtn.text = "MÁX"; tbtn.disabled = true; tbtn.icon = null
 		else:
 			tbtn.text = str(GameState.talent_cost(key)); tbtn.disabled = not GameState.can_buy_talent(key)
 		_afford(tbtn, not tbtn.disabled)
@@ -912,7 +1018,7 @@ func _process(delta: float) -> void:
 	if not gct.is_empty():
 		var ct_btn: Button = gct["btn"]
 		if GameState.combo_window_bonus > 0.0:
-			ct_btn.text = "Obtido"; ct_btn.disabled = true
+			ct_btn.text = "Obtido"; ct_btn.disabled = true; ct_btn.icon = null
 			_afford(ct_btn, false)
 		else:
 			var cc2: int = int(Economy.GEM_SHOP["combo_time"]["cost"])
@@ -958,6 +1064,8 @@ func _process(delta: float) -> void:
 
 	_update_nav_dots()
 
+	if Engine.get_frames_drawn() % 15 == 0:
+		_update_contracts()
 	if Engine.get_frames_drawn() % 30 == 0 and _settings_stats_lbl != null:
 		if is_instance_valid(_settings_stats_lbl):
 			_settings_stats_lbl.text = _settings_stats_text()
@@ -975,13 +1083,18 @@ func _process(delta: float) -> void:
 		Achievements.check("influence_50", GameState.influence_total >= 50)
 		Achievements.check("gems_100",     GameState.gems >= 100)
 		_check_income_milestones()
-		_update_contracts()
 		for id: String in _achieve_prog_fills:
 			if Achievements.is_done(id): continue
 			var prog := Achievements.progress(id)
 			if prog.y > 0.0:
-				(_achieve_prog_fills[id] as Panel).anchor_right = clampf(prog.x / prog.y, 0.0, 1.0)
+				_set_fill(_achieve_prog_fills[id] as Panel, clampf(prog.x / prog.y, 0.0, 1.0))
 				(_achieve_prog_lbls[id] as Label).text = "%s / %s" % [Fmt.short(prog.x), Fmt.short(prog.y)]
+
+## Hide near-zero fills: rounded corners + glow made sub-pixel fills render as
+## floating glowing dots.
+func _set_fill(p: Panel, pct: float) -> void:
+	p.anchor_right = pct
+	p.visible = pct >= 0.02
 
 func _unlock_progress() -> float:
 	var cc := GameState.next_city_cost()
@@ -1029,14 +1142,17 @@ func _effect(key: String) -> String:
 
 # ── Signal handlers ──────────────────────────────────────────────────────────────
 
-func _on_city_unlocked(_i: int) -> void:
+func _on_city_unlocked(i: int) -> void:
 	_toast("Cidade desbloqueada!", UITheme.CYAN, "ic_city")
 	var c := Vector2(size.x * 0.5, size.y * 0.42)
 	Fx.confetti(self, c, 22)
 	Fx.ring_pulse(self, c, UITheme.CYAN, 2.2)
 	Fx.screen_flash(self, UITheme.CYAN, 0.10)
+	_map.focus_city(i)
+	_rebuild_city_list()
 
 func _on_country_changed(i: int) -> void:
+	_rebuild_city_list()
 	var c := Vector2(size.x * 0.5, size.y * 0.40)
 	if i >= Economy.num_countries() - 1:
 		_toast("🏆 MISSÃO COMPLETA! Conquistaste o mundo!", UITheme.GOLD, "ic_city")
@@ -1261,12 +1377,20 @@ func _show_settings() -> void:
 	box.add_child(_settings_toggle("Reduzir animações", Fx.reduce_motion,
 		func(on): Fx.set_reduce_motion(on); SaveSystem.save_game()))
 
+	var rule := Panel.new(); rule.custom_minimum_size = Vector2(0, 2)
+	rule.add_theme_stylebox_override("panel", UITheme.section_rule()); box.add_child(rule)
+
+	var stats_card := PanelContainer.new()
+	stats_card.add_theme_stylebox_override("panel", UITheme.solid(UITheme.PANEL, 14))
+	box.add_child(stats_card)
 	var stats := _lbl(_settings_stats_text(), 17, UITheme.MUTED)
 	stats.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	stats.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; box.add_child(stats)
+	stats.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	stats.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	stats_card.add_child(stats)
 	_settings_stats_lbl = stats
 
-	var attr := _lbl("🎵 Música: Eric Matyas · soundimage.org", 14, UITheme.MUTED)
+	var attr := _lbl("Música: Eric Matyas · soundimage.org", 14, UITheme.MUTED)
 	attr.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; box.add_child(attr)
 
 	var restore := _wide_btn(UITheme.ACCENT); restore.text = "Restaurar compras"
@@ -1275,23 +1399,54 @@ func _show_settings() -> void:
 	restore.pressed.connect(func(): Fx.press(restore); _toast("A verificar compras...", UITheme.ACCENT); SaveSystem.save_game())
 	box.add_child(restore)
 
-	box.add_child(_lbl("Drone Tycoon: Sky Fleet · v1.12.0 · © 2026 LPCF", 15, UITheme.MUTED))
+	var ver := _lbl("Drone Tycoon: Sky Fleet · v1.13.0 · © 2026 LPCF", 15, UITheme.MUTED)
+	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	ver.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	box.add_child(ver)
 
 	var reset := Button.new(); reset.text = "Repor progresso"
-	reset.add_theme_font_size_override("font_size", 28); reset.add_theme_font_override("font", UITheme.font("Bold"))
-	reset.custom_minimum_size = Vector2(0, 84)
-	reset.add_theme_stylebox_override("normal", UITheme.danger_btn())
+	reset.add_theme_font_size_override("font_size", 20)
+	reset.add_theme_color_override("font_color", UITheme.RED)
+	reset.custom_minimum_size = Vector2(0, 56)
+	reset.add_theme_stylebox_override("normal", UITheme.danger_outline())
 	reset.add_theme_stylebox_override("focus",  StyleBoxEmpty.new())
-	reset.pressed.connect(func(): SaveSystem.wipe(); get_tree().reload_current_scene())
+	reset.pressed.connect(func(): Fx.press(reset); _show_reset_confirm())
 	box.add_child(reset)
 
 	box.add_child(_close_btn(layer))
 
+func _show_reset_confirm() -> void:
+	var layer := _overlay(); var box := _popup_box(layer, UITheme.RED)
+	var hd := _lbl("Repor progresso?", 28, UITheme.RED)
+	hd.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hd.size_flags_horizontal = Control.SIZE_EXPAND_FILL; box.add_child(hd)
+	var warn := _lbl("Apaga TODO o progresso: créditos, drones, países, prestige e conquistas.\nNão pode ser desfeito.", 18, UITheme.MUTED)
+	warn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	warn.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; box.add_child(warn)
+	var confirm := Button.new(); confirm.text = "SIM, APAGAR TUDO"
+	confirm.add_theme_font_size_override("font_size", 22); confirm.custom_minimum_size = Vector2(0, 66)
+	confirm.add_theme_stylebox_override("normal", UITheme.danger_btn())
+	confirm.add_theme_stylebox_override("focus",  StyleBoxEmpty.new())
+	confirm.pressed.connect(func(): SaveSystem.wipe(); get_tree().reload_current_scene())
+	box.add_child(confirm)
+	var cancel := Button.new(); cancel.text = "Cancelar"; cancel.add_theme_font_size_override("font_size", 22)
+	cancel.custom_minimum_size = Vector2(0, 62); cancel.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	cancel.pressed.connect(func(): layer.queue_free()); box.add_child(cancel)
+
 func _show_offline_popup(amount: float, seconds: float) -> void:
 	var layer := _overlay(); var box := _popup_box(layer, UITheme.ACCENT)
-	box.add_child(_lbl("✈  Bem-vindo de volta!", 30, UITheme.INK))
-	var m := _lbl("Os drones entregaram durante %s\ne ganharam  %s  Créditos." % [Fmt.duration(seconds), Fmt.short(amount)], 19, UITheme.MUTED)
+	box.add_child(_lbl("Bem-vindo de volta!", 30, UITheme.INK))
+	var m := _lbl("Os drones entregaram durante %s:" % Fmt.duration(seconds), 19, UITheme.MUTED)
 	m.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; m.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; box.add_child(m)
+	var big := _lbl(Fmt.short(amount), 40, UITheme.GOLD)
+	big.add_theme_font_override("font", UITheme.font("Bold"))
+	big.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	big.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	box.add_child(big)
+	if not Fx.reduce_motion:
+		var ctw := create_tween()
+		ctw.tween_method(func(v: float): big.text = Fmt.short(v), 0.0, amount, 0.9) \
+			.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	var collect := Button.new(); collect.text = "Recolher"
 	collect.add_theme_font_size_override("font_size", 24); collect.custom_minimum_size = Vector2(0, 70)
 	collect.add_theme_stylebox_override("normal", UITheme.action_btn(UITheme.GREEN))
@@ -1299,7 +1454,9 @@ func _show_offline_popup(amount: float, seconds: float) -> void:
 	collect.pressed.connect(func():
 		GameState.collect_offline(1.0)
 		_disp_credits = GameState.credits
+		Fx.coin_fountain(self, collect.get_global_rect().get_center(), _credits_chip.get_global_rect().get_center(), 12)
 		Fx.chip_pop(_credits_chip, UITheme.GOLD)
+		Audio.play("milestone")
 		layer.queue_free()
 		if Daily.pending:
 			_show_daily_popup()
@@ -1315,7 +1472,9 @@ func _show_offline_popup(amount: float, seconds: float) -> void:
 		Ads.show_rewarded("offline2x", func():
 			GameState.collect_offline(2.0)
 			_disp_credits = GameState.credits
+			Fx.coin_fountain(self, Vector2(size.x * 0.5, size.y * 0.5), _credits_chip.get_global_rect().get_center(), 12)
 			Fx.chip_pop(_credits_chip, UITheme.GOLD)
+			Audio.play("milestone")
 			if Daily.pending:
 				_show_daily_popup()
 		)
@@ -1394,11 +1553,17 @@ func _on_delivered(amount: float, _city_idx: int) -> void:
 	var cx := size.x * 0.5 + randf_range(-80, 80)
 	var cy := size.y * 0.42 + randf_range(-50, 50)
 	Fx.floating_label(self, "+" + Fmt.short(amount * n), Fx.GOLD, Vector2(cx, cy), 26)
+	# every ~8th shown delivery, fly coins into the credits chip (it never
+	# animated before — the core earn beat now lands on the HUD)
+	_fountain_counter += 1
+	if _fountain_counter % 8 == 0:
+		Fx.coin_fountain(self, Vector2(cx, cy), _credits_chip.get_global_rect().get_center(), 6)
+		Fx.chip_pop(_credits_chip, UITheme.GOLD)
 
 # ── Contract signal handlers ──────────────────────────────────────────────────────
 
 func _on_contract_completed(_slot: int) -> void:
-	_toast("Missão concluída! Recompensa recebida 🎯", UITheme.CYAN, "ic_achieve")
+	_toast("Missão concluída! Recompensa recebida", UITheme.CYAN, "ic_achieve")
 	Fx.confetti(self, Vector2(size.x * 0.5, size.y * 0.45), 30, [UITheme.CYAN, UITheme.GREEN, UITheme.GOLD])
 	Fx.screen_flash(self, UITheme.CYAN, 0.10)
 	Audio.play("milestone")
@@ -1409,7 +1574,7 @@ func _check_income_milestones() -> void:
 	var ips := GameState.income_per_sec()
 	while _income_milestone_idx < INCOME_MILESTONES.size() and ips >= float(INCOME_MILESTONES[_income_milestone_idx]):
 		var lbl: String = str(MILESTONE_LABELS[_income_milestone_idx])
-		_toast("Nova marca: " + lbl + "/s! 🚀", UITheme.GREEN, "ic_fleet")
+		_toast("Nova marca: " + lbl + "/s!", UITheme.GREEN, "ic_fleet")
 		var c := Vector2(size.x * 0.5, size.y * 0.43)
 		Fx.confetti(self, c, 36, [UITheme.GREEN, UITheme.GOLD, UITheme.CYAN])
 		Fx.screen_flash(self, UITheme.GREEN, 0.12)
@@ -1423,7 +1588,7 @@ func _update_contracts() -> void:
 		if i >= _mission_title_lbls.size(): break
 		var s: Dictionary = Contracts.slots[i] if i < Contracts.slots.size() else {}
 		(_mission_title_lbls[i] as Label).text = str(s.get("label", ""))
-		(_mission_prog_bars[i] as Panel).anchor_right = Contracts.progress_pct(i)
+		_set_fill(_mission_prog_bars[i] as Panel, Contracts.progress_pct(i))
 		var tgt := float(s.get("target", 1.0))
 		var prg := minf(float(s.get("progress", 0.0)), tgt)
 		(_mission_prog_lbls[i] as Label).text = Fmt.short(prg) + "/" + Fmt.short(tgt)
@@ -1438,7 +1603,12 @@ func _update_contracts() -> void:
 		var ready: bool = s.get("ready", false) and not s.get("claimed", false)
 		var cbtn := _mission_claim_btns[i] as Button
 		cbtn.disabled = not ready
-		cbtn.text = "REIVINDICAR" if ready else ("✓ Recebido" if s.get("claimed", false) else "...")
+		if ready:
+			cbtn.text = "REIVINDICAR"; cbtn.icon = null
+		elif s.get("claimed", false):
+			cbtn.text = "Recebido"; cbtn.icon = _opt_tex("ic_check")
+		else:
+			cbtn.text = "Em curso"; cbtn.icon = null
 		_afford(cbtn, ready)
 		if i < _mission_x2_btns.size():
 			(_mission_x2_btns[i] as Button).visible = ready
@@ -1446,9 +1616,12 @@ func _update_contracts() -> void:
 			(_mission_reroll_btns[i] as Button).visible = (i < 3) and not ready and not s.get("claimed", false)
 		var rc: float = float(s.get("reward_credits", 0.0))
 		var rg: int = int(s.get("reward_gems", 0))
-		var rew := "+" + Fmt.short(rc)
-		if rg > 0: rew += " +%d💎" % rg
-		(_mission_reward_lbls[i] as Label).text = rew
+		(_mission_reward_lbls[i] as Label).text = "+" + Fmt.short(rc)
+		if i < _mission_gem_lbls.size():
+			(_mission_gem_icons[i] as TextureRect).visible = rg > 0
+			var gl := _mission_gem_lbls[i] as Label
+			gl.visible = rg > 0
+			gl.text = "+%d" % rg
 
 # ── Missions tab ──────────────────────────────────────────────────────────────────
 
@@ -1476,9 +1649,11 @@ func _build_missions_tab() -> ScrollContainer:
 
 		# rewarded-ad reroll (rotating slots only; weekly is fixed)
 		var ri := i
-		var rbtn := Button.new(); rbtn.text = "↻📺"
-		rbtn.add_theme_font_size_override("font_size", 16)
-		rbtn.custom_minimum_size = Vector2(64, 44)
+		var rbtn := Button.new(); rbtn.text = "Trocar"
+		rbtn.icon = _opt_tex("ic_ad"); rbtn.expand_icon = true
+		rbtn.add_theme_constant_override("icon_max_width", 20)
+		rbtn.add_theme_font_size_override("font_size", 14)
+		rbtn.custom_minimum_size = Vector2(96, 44)
 		rbtn.add_theme_stylebox_override("normal", UITheme.solid(UITheme.PANEL2, 12))
 		rbtn.add_theme_stylebox_override("focus",  StyleBoxEmpty.new())
 		rbtn.visible = (i < 3)
@@ -1509,14 +1684,18 @@ func _build_missions_tab() -> ScrollContainer:
 
 		var rc: float = float(s.get("reward_credits", 0.0))
 		var rg: int = int(s.get("reward_gems", 0))
-		var rew_text := "+" + Fmt.short(rc)
-		if rg > 0: rew_text += " +%d💎" % rg
-		var rew_lbl := _lbl(rew_text, 15, UITheme.GREEN); bot.add_child(rew_lbl)
+		var rew_lbl := _lbl("+" + Fmt.short(rc), 15, UITheme.GREEN); bot.add_child(rew_lbl)
 		_mission_reward_lbls.append(rew_lbl)
+		var gic := _icon("ic_gems", 16); gic.visible = rg > 0; bot.add_child(gic)
+		_mission_gem_icons.append(gic)
+		var gem_lbl := _lbl("+%d" % rg, 15, UITheme.CYAN); gem_lbl.visible = rg > 0; bot.add_child(gem_lbl)
+		_mission_gem_lbls.append(gem_lbl)
 
 		var ci := i
 		var cbtn := _buy_btn(slot_color.darkened(0.18))
-		cbtn.text = "..."; cbtn.disabled = true
+		cbtn.text = "Em curso"; cbtn.disabled = true
+		cbtn.expand_icon = true
+		cbtn.add_theme_constant_override("icon_max_width", 20)
 		cbtn.size_flags_horizontal = Control.SIZE_SHRINK_END
 		cbtn.custom_minimum_size = Vector2(130, 52)
 		cbtn.add_theme_font_size_override("font_size", 16)
@@ -1532,7 +1711,9 @@ func _build_missions_tab() -> ScrollContainer:
 
 		# double reward via rewarded ad
 		var xbtn := _buy_btn(UITheme.GREEN_D)
-		xbtn.text = "2×📺"
+		xbtn.text = "2×"
+		xbtn.icon = _opt_tex("ic_ad"); xbtn.expand_icon = true
+		xbtn.add_theme_constant_override("icon_max_width", 20)
 		xbtn.size_flags_horizontal = Control.SIZE_SHRINK_END
 		xbtn.custom_minimum_size = Vector2(84, 52)
 		xbtn.add_theme_font_size_override("font_size", 16)
@@ -1544,7 +1725,7 @@ func _build_missions_tab() -> ScrollContainer:
 				if Contracts.claim(ci, 2.0):
 					Audio.play("milestone")
 					Fx.chip_pop(_credits_chip, UITheme.GOLD)
-					_toast("Recompensa a DOBRAR! 🎉", UITheme.GREEN, "ic_achieve"))
+					_toast("Recompensa a DOBRAR!", UITheme.GREEN, "ic_achieve"))
 		)
 		bot.add_child(xbtn)
 		_mission_x2_btns.append(xbtn)

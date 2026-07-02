@@ -350,8 +350,9 @@ static func prog_bg() -> StyleBoxFlat:
 	return s
 
 ## Progress bar fill (colour = accent/green/gold based on context).
+## Flat 3px radius: R_CHIP made sub-pixel fills render as floating glow dots.
 static func prog_fill(col: Color) -> StyleBoxFlat:
-	var s := StyleBoxFlat.new(); s.bg_color = col; s.set_corner_radius_all(R_CHIP)
+	var s := StyleBoxFlat.new(); s.bg_color = col; s.set_corner_radius_all(3)
 	s.border_color = col.lightened(0.30); s.border_width_top = 1
 	_glow(s, col, 0.45, 6, Vector2(0, 0))
 	return s
@@ -370,6 +371,15 @@ static func daily_card(claimed: bool, current: bool) -> StyleBoxFlat:
 		s.border_color = Color(GREEN.r, GREEN.g, GREEN.b, 0.45); s.set_border_width_all(1)
 	else:
 		s.border_color = BORDER; s.set_border_width_all(1)
+	return s
+
+## Quiet outline variant for destructive triggers that should not scream.
+static func danger_outline() -> StyleBoxFlat:
+	var s := StyleBoxFlat.new(); s.bg_color = Color(0, 0, 0, 0)
+	s.set_corner_radius_all(R_BTN)
+	s.content_margin_left = 18; s.content_margin_right = 18
+	s.content_margin_top = 13; s.content_margin_bottom = 13
+	s.border_color = RED; s.set_border_width_all(1)
 	return s
 
 ## Danger / destructive button (prestige confirm, wipe).
