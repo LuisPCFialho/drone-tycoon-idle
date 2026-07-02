@@ -22,8 +22,8 @@ const SHOP := {
     "offline_20":  {"name": "Operações Noturnas",    "cost": 15, "desc": "+20% de eficiência offline permanente."},
     "drones_10":   {"name": "Hangar Herdado",        "cost": 10, "desc": "Começa sempre com 10 drones extra."},
     "drones_25":   {"name": "Hangar Militar",        "cost": 20, "desc": "Começa sempre com 25 drones extra."},
-    "vip_24h":     {"name": "Prévia VIP",            "cost": 30, "desc": "Activa VIP por 24 h após cada prestige."},
-    "start_c2":    {"name": "Voos Internacionais",   "cost": 40, "desc": "Começa no 2.º país após prestige."},
+    "vip_24h":     {"name": "Prévia VIP",            "cost": 35, "desc": "Activa VIP por 24 h após cada prestige."},
+    "start_c2":    {"name": "Voos Internacionais",   "cost": 55, "desc": "Começa no 2.º país após prestige."},
 }
 const SHOP_ORDER := ["speed_5", "cargo_5", "value_5", "offline_10", "offline_20", "drones_10", "drones_25", "vip_24h", "start_c2"]
 

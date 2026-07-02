@@ -1,5 +1,5 @@
 extends Control
-## Main scene — Drone Tycoon: Sky Fleet  v1.13.0
+## Main scene — Drone Tycoon: Sky Fleet  v1.14.0
 
 const NAV_H  := 132.0
 const TABS_H := 532.0
@@ -60,6 +60,7 @@ var _progress_lbl: Label
 var _city_list_box: VBoxContainer
 var _prestige_btn: Button
 var _prestige_info_lbl: Label
+var _pgems_lbl: Label
 var _achieve_cells := {}
 var _achieve_prog_fills := {}
 var _achieve_prog_lbls := {}
@@ -645,7 +646,7 @@ func _rebuild_city_list() -> void:
 
 func _build_talents_tab() -> ScrollContainer:
 	var r := _scroll("Talentos"); var v: VBoxContainer = r[1]
-	var info := _lbl("Influência ganha-se ao expandir países.\nGasta-a em bónus PERMANENTES.", 16, UITheme.MUTED)
+	var info := _lbl("Influência ganha-se ao expandir países.\nGasta-a em bónus válidos até ao próximo Prestige.", 16, UITheme.MUTED)
 	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; v.add_child(info)
 	for key: String in Economy.TALENT_ORDER:
 		v.add_child(_make_talent_row(key))
@@ -663,6 +664,15 @@ func _build_legado_tab() -> ScrollContainer:
 	ps_h.add_child(_lbl("Sistema de Prestige", 21, UITheme.PRESTIGE))
 	var ps_info := _lbl("Reinicia com multiplicador permanente.\nRequer 5.º país desbloqueado.", 15, UITheme.MUTED)
 	ps_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; ps_v.add_child(ps_info)
+
+	# Prestige Gems balance — distinct from the HUD's Influência chip, which
+	# players previously had no way to tell apart (same icon/colour, no label
+	# anywhere showed the actual pgems total).
+	var pg_row := HBoxContainer.new(); pg_row.add_theme_constant_override("separation", 6); ps_v.add_child(pg_row)
+	pg_row.add_child(_icon("ic_prestige", 20))
+	pg_row.add_child(_lbl("Gemas de Prestígio:", 15, UITheme.MUTED))
+	_pgems_lbl = _lbl("0", 17, UITheme.PRESTIGE)
+	_pgems_lbl.add_theme_font_override("font", UITheme.font("Bold")); pg_row.add_child(_pgems_lbl)
 
 	v.add_child(_section("Loja de Prestige", UITheme.PRESTIGE, "ic_prestige"))
 	for id: String in Prestige.SHOP_ORDER:
@@ -876,7 +886,33 @@ func _make_iap_row(id: String) -> PanelContainer:
 		Fx.press(btn); Billing.buy(id); Audio.play("buy")
 	)
 	r["right"].add_child(btn)
+	if id == "vip":
+		_add_ribbon(r["card"], "RECOMENDADO", UITheme.VIOLET)
+	elif id == "gems_xl":
+		_add_ribbon(r["card"], "MELHOR VALOR", UITheme.GOLD)
 	return r["card"]
+
+## Small pinned corner badge for highlighting the best-value / recommended
+## purchase. NOTE: PanelContainer is a real Container — unlike a plain
+## Control (see the nav bar's affordable "dot"), it ignores a child's own
+## anchors/offsets and stretches every direct child to the full content rect.
+## The correct way to carve out a corner within a Container is size_flags
+## (SHRINK_END/SHRINK_BEGIN), which lets the child collapse to its natural
+## size and align within that shared rect instead of filling it.
+func _add_ribbon(card: PanelContainer, text: String, color: Color) -> void:
+	var rb := PanelContainer.new()
+	rb.size_flags_horizontal = Control.SIZE_SHRINK_END
+	rb.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	rb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = color; sb.set_corner_radius_all(8)
+	sb.content_margin_left = 8; sb.content_margin_right = 8
+	sb.content_margin_top = 3; sb.content_margin_bottom = 3
+	rb.add_theme_stylebox_override("panel", sb)
+	var l := _lbl(text, 11, Color(0.08, 0.06, 0.0))
+	l.add_theme_font_override("font", UITheme.font("Bold"))
+	rb.add_child(l)
+	card.add_child(rb)
 
 func _buy_gem(id: String, btn: Button) -> void:
 	if not _can_tap(): return
@@ -935,6 +971,8 @@ func _process(delta: float) -> void:
 	_gems_lbl.text    = str(GameState.gems)
 	_infl_lbl.text    = (Prestige.tier_name() + " · " + str(GameState.influence)) if Prestige.count > 0 else str(GameState.influence)
 	_vip_badge.visible = Billing.vip
+	if _pgems_lbl != null and is_instance_valid(_pgems_lbl):
+		_pgems_lbl.text = str(Prestige.pgems)
 
 	# chip-pop on discrete currency increases
 	if GameState.gems > _prev_gems: Fx.chip_pop(_gems_chip, UITheme.CYAN)
@@ -990,7 +1028,8 @@ func _process(delta: float) -> void:
 		btn.text    = (("×%d   " % count) if GameState.buy_mode != 1 else "") + Fmt.short(cost)
 		btn.disabled = GameState.credits < cost
 		_afford(btn, not btn.disabled)
-		row["detail"].text = "Nv %d · %s" % [int(GameState.levels[key]), _effect(key)]
+		var ulvl := int(GameState.levels[key])
+		row["detail"].text = "Nv %d · %s (%s)" % [ulvl, _effect_total(key, ulvl), _effect(key)] if ulvl > 0 else "Nv 0 · %s" % _effect(key)
 
 	for key: String in _talent_rows:
 		var tp: Dictionary = Economy.TALENTS[key]; var lvl := int(GameState.talents[key])
@@ -1001,7 +1040,8 @@ func _process(delta: float) -> void:
 		else:
 			tbtn.text = str(GameState.talent_cost(key)); tbtn.disabled = not GameState.can_buy_talent(key)
 		_afford(tbtn, not tbtn.disabled)
-		tr["detail"].text = "Nv %d/%d · %s" % [lvl, int(tp["max"]), tp["desc"]]
+		var tdesc: String = _talent_effect_total(key, lvl) if lvl > 0 else str(tp["desc"])
+		tr["detail"].text = "Nv %d/%d · %s" % [lvl, int(tp["max"]), tdesc]
 
 	var gb: Dictionary = _gem_rows.get("boost", {})
 	if not gb.is_empty():
@@ -1138,6 +1178,24 @@ func _effect(key: String) -> String:
 		"cargo":  return "+0.25/nv carga"
 		"value":  return "+4%/nv valor"
 		"routes": return "+2.5%/nv eficiência de rota"
+	return ""
+
+## Cumulative total bonus at the given level (vs. the flat per-level rate in
+## _effect) — much more useful once a few levels are owned.
+func _effect_total(key: String, lvl: int) -> String:
+	match key:
+		"speed":  return "+%.0f%% total" % (3.0 * float(lvl))
+		"cargo":  return "+%.0f%% total" % (25.0 * float(lvl))
+		"value":  return "+%.0f%% total" % ((pow(1.04, float(lvl)) - 1.0) * 100.0)
+		"routes": return "+%.0f%% total" % (2.5 * float(lvl))
+	return ""
+
+func _talent_effect_total(key: String, lvl: int) -> String:
+	match key:
+		"global": return "+%.0f%% lucros" % (6.0 * float(lvl))
+		"speed":  return "+%.0f%% velocidade" % (4.0 * float(lvl))
+		"value":  return "+%.0f%% valor" % (4.0 * float(lvl))
+		"hangar": return "-%.0f%% custo drones" % (2.0 * float(lvl))
 	return ""
 
 # ── Signal handlers ──────────────────────────────────────────────────────────────
@@ -1399,7 +1457,7 @@ func _show_settings() -> void:
 	restore.pressed.connect(func(): Fx.press(restore); _toast("A verificar compras...", UITheme.ACCENT); SaveSystem.save_game())
 	box.add_child(restore)
 
-	var ver := _lbl("Drone Tycoon: Sky Fleet · v1.13.0 · © 2026 LPCF", 15, UITheme.MUTED)
+	var ver := _lbl("Drone Tycoon: Sky Fleet · v1.14.0 · © 2026 LPCF", 15, UITheme.MUTED)
 	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	ver.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	box.add_child(ver)

@@ -211,8 +211,10 @@ func expand_country() -> bool:
 	credits -= expand_cost()
 	current_country += 1
 	cities_unlocked = 1
-	influence += 3 + int(current_country / 4)
-	influence_total = influence_total + 3 + int(current_country / 4)
+	# Bumped alongside the softer talent cost curve so a talent is actually
+	# fundable within a normal run (talents reset on prestige).
+	influence += 4 + int(current_country / 3)
+	influence_total = influence_total + 4 + int(current_country / 3)
 	_rebuild_drones()
 	country_changed.emit(current_country)
 	SaveSystem.save_game()

@@ -14,10 +14,14 @@ const UPGRADES := {
 const UPGRADE_ORDER := ["speed", "cargo", "value", "routes"]
 
 const TALENTS := {
-	"global":  {"name": "Comando Central", "desc": "+6% lucros globais", "max": 100, "icon": "ic_prestige"},
-	"speed":   {"name": "Rotores Turbo", "desc": "+4% velocidade", "max": 60, "icon": "ic_speed"},
-	"value":   {"name": "Rotas Premium", "desc": "+4% valor", "max": 60, "icon": "ic_value"},
-	"hangar":  {"name": "Hangar Eficiente", "desc": "-2% custo de drones", "max": 25, "icon": "ic_drone"},
+	# Maxes + cost curve tuned so a fully-committed single prestige cycle can
+	# realistically max at least one talent (talents reset on prestige, unlike
+	# the Prestige Shop). Previous 1.7^level with maxes 100/60/60/25 was
+	# mathematically unreachable given typical influence income.
+	"global":  {"name": "Comando Central", "desc": "+6% lucros globais", "max": 25, "icon": "ic_prestige"},
+	"speed":   {"name": "Rotores Turbo", "desc": "+4% velocidade", "max": 20, "icon": "ic_speed"},
+	"value":   {"name": "Rotas Premium", "desc": "+4% valor", "max": 20, "icon": "ic_value"},
+	"hangar":  {"name": "Hangar Eficiente", "desc": "-2% custo de drones", "max": 10, "icon": "ic_drone"},
 }
 const TALENT_ORDER := ["global", "speed", "value", "hangar"]
 
@@ -91,7 +95,7 @@ func expand_cost(country_idx: int) -> float:
 	return 80000.0 * cost_tier(country_idx)
 
 func talent_cost(level: int) -> int:
-	return int(ceil(pow(1.7, float(level))))
+	return int(ceil(4.0 * pow(1.12, float(level))))
 
 func gem_boost_cost(level: int) -> int:
 	return 60 * int(pow(2.0, float(level)))

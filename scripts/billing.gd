@@ -11,20 +11,22 @@ var vip := false               # VIP pass: 2x always + 24h offline + bonus
 
 const PRODUCTS := {
 	"starter":  {"name": "Pacote Inicial", "price": "€2,99", "type": "nonconsumable", "desc": "+300 Gemas, +5 drones e Lucros x2 por 1h. Arranque rápido!"},
-	"vip":      {"name": "Passe VIP", "price": "€9,99", "type": "nonconsumable", "desc": "Lucros x2 SEMPRE ativos, offline até 24h, +500 Gemas. O melhor valor."},
-	"perm_x2":  {"name": "Lucros x2 (para sempre)", "price": "€5,99", "type": "nonconsumable", "desc": "Duplica todos os lucros, para sempre."},
+	"vip":      {"name": "Passe VIP", "price": "€9,99", "type": "nonconsumable", "desc": "Lucros x2 SEMPRE ativos, offline até 24h, +500 Gemas."},
+	"perm_x2":  {"name": "Lucros x2 (para sempre)", "price": "€6,99", "type": "nonconsumable", "desc": "Duplica todos os lucros, para sempre."},
+	"gems_xs":  {"name": "Bolso de Gemas", "price": "€0,99", "type": "consumable", "gems": 50, "desc": "+50 Gemas"},
 	"gems_s":   {"name": "Punhado de Gemas", "price": "€1,99", "type": "consumable", "gems": 120, "desc": "+120 Gemas"},
 	"gems_m":   {"name": "Saco de Gemas", "price": "€7,99", "type": "consumable", "gems": 650, "desc": "+650 Gemas (bónus +30%)"},
-	"gems_l":   {"name": "Cofre de Gemas", "price": "€19,99", "type": "consumable", "gems": 1900, "desc": "+1900 Gemas (melhor valor)"},
+	"gems_l":   {"name": "Cofre de Gemas", "price": "€19,99", "type": "consumable", "gems": 1900, "desc": "+1900 Gemas (óptimo valor)"},
+	"gems_xl":  {"name": "Tesouro de Gemas", "price": "€34,99", "type": "consumable", "gems": 3800, "desc": "+3800 Gemas (melhor valor)"},
 }
-const PRODUCT_ORDER := ["starter", "vip", "perm_x2", "gems_s", "gems_m", "gems_l"]
+const PRODUCT_ORDER := ["starter", "vip", "perm_x2", "gems_xs", "gems_s", "gems_m", "gems_l", "gems_xl"]
 
 func buy(product_id: String) -> void:
 	if not PRODUCTS.has(product_id):
 		purchase_failed.emit(product_id, "produto desconhecido"); return
 	var p: Dictionary = PRODUCTS[product_id]
 	match product_id:
-		"gems_s", "gems_m", "gems_l":
+		"gems_xs", "gems_s", "gems_m", "gems_l", "gems_xl":
 			GameState.gems += int(p["gems"])
 		"perm_x2":
 			perm_mult = max(perm_mult, 2.0)
