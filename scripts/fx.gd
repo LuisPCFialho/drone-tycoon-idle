@@ -37,12 +37,20 @@ const MAX_PARTICLES := 8     # live CPUParticles2D emitters
 
 var reduce_motion := false
 var haptics := true
+var locale := ""   # "" = auto-detect from device on first launch, else "pt"/"en"
 var _t := 0.0                # shared pulse_clock rhythm
 var _live_labels := 0
 var _live_particles := 0
 var _tex_cache := {}         # filename -> Texture2D (or null if missing)
 
 # ── Lifecycle ─────────────────────────────────────────────────────────────────
+
+func _ready() -> void:
+	# Runs before any save loads, so a fresh install still gets a sensible
+	# locale immediately; from_dict() (once the save loads) applies the
+	# player's explicit saved choice, if any — safe to call twice since
+	# Godot live-retranslates every already-built Control on locale change.
+	apply_locale()
 
 func _process(delta: float) -> void:
 	_t += delta
@@ -505,11 +513,26 @@ func set_reduce_motion(enabled: bool) -> void:
 	reduce_motion = enabled
 
 func to_dict() -> Dictionary:
-	return {"reduce_motion": reduce_motion, "haptics": haptics}
+	return {"reduce_motion": reduce_motion, "haptics": haptics, "locale": locale}
 
 func from_dict(d: Dictionary) -> void:
 	reduce_motion = bool(d.get("reduce_motion", false))
 	haptics = bool(d.get("haptics", true))
+	locale = str(d.get("locale", ""))
+	apply_locale()
+
+## Applies `locale`, auto-detecting from the device's language on first
+## launch (empty locale) — Portuguese-family locales stay untranslated
+## (source strings already are PT), anything else switches to English.
+func apply_locale() -> void:
+	var eff := locale
+	if eff == "":
+		eff = "en" if not OS.get_locale_language().begins_with("pt") else "pt"
+	TranslationServer.set_locale(eff)
+
+func set_locale(l: String) -> void:
+	locale = l
+	apply_locale()
 
 # ── Internal helpers ───────────────────────────────────────────────────────────
 

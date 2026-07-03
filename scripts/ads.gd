@@ -1,17 +1,54 @@
 extends Node
 ## Ads layer (autoload: Ads).
 ##
-## FAKE implementation: a rewarded ad is simulated with a short on-screen overlay
-## and then the reward is granted for real. The public API (is_rewarded_ready,
-## show_rewarded, show_interstitial) matches a real AdMob integration so it can be
-## swapped without touching gameplay code — see docs/ADMOB_INTEGRATION.md.
+## Real AdMob rewarded ads on Android when the AdmobPlugin native singleton is
+## present (release/debug device or emulator builds with the plugin baked in).
+## Falls back to a simulated on-screen countdown in the editor and on desktop
+## builds without the plugin, so gameplay/reward flows stay testable without a
+## device. Public API (is_rewarded_ready, show_rewarded, show_interstitial) is
+## unchanged either way — see docs/ADMOB_INTEGRATION.md.
+##
+## Uses Google's public TEST ad unit IDs (Admob.ANDROID_REWARDED_DEMO_AD_UNIT_ID)
+## until real ones are configured — see docs/ADMOB_INTEGRATION.md for the
+## one-line switch to production ads once an AdMob account/app exists.
 
 signal reward_granted(kind: String)
 
 var _busy := false
 
+# --- real AdMob path ---
+var _admob: Admob = null
+var _ad_ready := false
+var _pending_kind := ""
+var _pending_cb: Callable
+
+func _ready() -> void:
+	if OS.get_name() != "Android" or not Engine.has_singleton("AdmobPlugin"):
+		return   # editor / desktop / plugin not baked into this build: fake path only
+	_admob = Admob.new()
+	_admob.is_real = false   # flip to true in docs/ADMOB_INTEGRATION.md once real IDs exist
+	add_child(_admob)
+	_admob.initialization_completed.connect(func(_status): _load_next_ad())
+	_admob.rewarded_ad_loaded.connect(func(_info, _resp): _ad_ready = true)
+	_admob.rewarded_ad_failed_to_load.connect(func(_info, _err): _ad_ready = false; _retry_load_later())
+	_admob.rewarded_ad_user_earned_reward.connect(func(_info, _reward): _grant_pending())
+	_admob.rewarded_ad_dismissed_full_screen_content.connect(func(_info): _busy = false; _load_next_ad())
+	_admob.rewarded_ad_failed_to_show_full_screen_content.connect(func(_info, _err): _grant_pending())
+	_admob.initialize()
+
+func _load_next_ad() -> void:
+	_ad_ready = false
+	if _admob != null:
+		_admob.load_rewarded_ad()
+
+func _retry_load_later() -> void:
+	await get_tree().create_timer(30.0).timeout
+	_load_next_ad()
+
 func is_rewarded_ready() -> bool:
-	return not _busy   # fake ads are always available
+	if _busy:
+		return false
+	return true if _admob == null else _ad_ready   # fake path is always available
 
 ## Show a rewarded ad. On completion, `on_reward` is called and the signal fires.
 ## `kind` is a free-form tag identifying the placement (e.g. "refuel", "x2", "offline").
@@ -19,15 +56,31 @@ func show_rewarded(kind: String, on_reward: Callable = Callable()) -> void:
 	if _busy:
 		return
 	_busy = true
-	_play_overlay(kind, on_reward)
+	if _admob == null or not _ad_ready:
+		# no plugin, or a real ad genuinely isn't ready yet — never soft-lock
+		# the player behind ad-network availability, degrade to the sim.
+		_play_overlay(kind, on_reward)
+		return
+	_pending_kind = kind
+	_pending_cb = on_reward
+	_admob.show_rewarded_ad()
 
-## Interstitials are gated by the "remove ads" purchase. No-op in the fake build
-## except for the brief demo overlay; real frequency-capping lives in the integration.
+func _grant_pending() -> void:
+	if not _busy:
+		return   # rewarded_ad_user_earned_reward AND the show-failure path can
+	_busy = false  # both fire in some SDK edge cases — only grant once
+	if _pending_cb.is_valid():
+		_pending_cb.call()
+	reward_granted.emit(_pending_kind)
+
+## Interstitials are gated by the "remove ads" purchase. No-op in this game
+## by design — see docs/ADMOB_INTEGRATION.md if that ever changes.
 func show_interstitial() -> void:
 	if Billing.ads_removed:
 		return
-	# In the fake build we intentionally show nothing intrusive.
 	pass
+
+# ── Fake/editor fallback (unchanged from the pre-AdMob build) ────────────────
 
 func _play_overlay(kind: String, on_reward: Callable) -> void:
 	var layer := CanvasLayer.new()

@@ -113,7 +113,7 @@ func _gen(slot_idx: int) -> Dictionary:
 		var wk_target := maxf(500.0, float(d_count) * 200.0)
 		return {
 			"type": "deliveries", "weekly": true,
-			"label": "Desafio Semanal: entrega %d pacotes" % int(wk_target),
+			"label": tr("Desafio Semanal: entrega %d pacotes") % int(wk_target),
 			"target": wk_target, "progress": 0.0, "earn_base": 0.0,
 			"deadline": now + 604800, "duration": 604800,
 			"reward_credits": ips * 7200.0,
@@ -140,13 +140,13 @@ func _gen(slot_idx: int) -> Dictionary:
 	match t:
 		"deliveries":
 			target = maxf(30.0, float(d_count) * 8.0 * diff)
-			label = "Entrega %d pacotes" % int(target)
+			label = tr("Entrega %d pacotes") % int(target)
 			dur = maxf(300.0, target * 3.0)
 			reward_credits = ips * minf(dur, 600.0) * 0.4 * diff
 			reward_gems = 1 if slot_idx >= 2 else 0
 		"earn":
 			target = ips * 120.0 * diff
-			label = "Ganha " + Fmt.short(target) + " créditos"
+			label = tr("Ganha %s créditos") % Fmt.short(target)
 			dur = maxf(600.0, 240.0 * diff)
 			reward_credits = target * 0.35 * diff
 			reward_gems = 1 if slot_idx >= 2 else 0
@@ -154,20 +154,20 @@ func _gen(slot_idx: int) -> Dictionary:
 		"drones":
 			var need := int(float(d_count) * (1.3 + 0.2 * float(slot_idx)))
 			target = float(maxi(need, d_count + 5))
-			label = "Tem %d drones na frota" % int(target)
+			label = tr("Tem %d drones na frota") % int(target)
 			dur = 3600.0
 			reward_credits = ips * 180.0 * diff
 			reward_gems = 1
 		"combo":
 			target = float(15 + slot_idx * 15)
-			label = "Atinge combo de %d entregas" % int(target)
+			label = tr("Atinge combo de %d entregas") % int(target)
 			dur = 1800.0
 			reward_credits = ips * 240.0 * diff
 			reward_gems = 1 if slot_idx >= 2 else 0
 		_:
 			t = "earn"
 			target = 1000.0
-			label = "Ganha 1K créditos"
+			label = tr("Ganha 1K créditos")
 			dur = 300.0
 			reward_credits = 400.0
 

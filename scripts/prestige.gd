@@ -35,7 +35,10 @@ func can_prestige() -> bool:
     return GameState.current_country >= MIN_COUNTRY
 
 func tier_name() -> String:
-    return TIER_NAMES[mini(count, TIER_NAMES.size() - 1)]
+    # tr() here (not at each call site) since TIER_NAMES words get embedded
+    # via %s into other format strings, where Godot's autotranslate-on-.text
+    # assignment never sees them individually.
+    return tr(TIER_NAMES[mini(count, TIER_NAMES.size() - 1)])
 
 func extra_offline_pct() -> float:
     var bonus := 0.0

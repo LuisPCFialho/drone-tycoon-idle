@@ -1,5 +1,5 @@
 extends Control
-## Main scene — Drone Tycoon: Sky Fleet  v1.14.0
+## Main scene — Drone Tycoon: Sky Fleet  v1.15.0
 
 const NAV_H  := 132.0
 const TABS_H := 532.0
@@ -499,7 +499,10 @@ func _section(text: String, color: Color, icon_name := "") -> Control:
 	var h := HBoxContainer.new(); h.add_theme_constant_override("separation", 6); wrap.add_child(h)
 	if icon_name != "":
 		h.add_child(_icon(icon_name, 22))
-	var l := Label.new(); l.text = text.to_upper()
+	# tr() explicitly BEFORE upper-casing: Label.text auto-translates on
+	# assignment, so translating the already-uppercased string would look up
+	# the wrong (uppercase) key in the CSV and silently miss.
+	var l := Label.new(); l.text = tr(text).to_upper()
 	l.add_theme_font_size_override("font_size", 16); l.add_theme_font_override("font", UITheme.font("Bold"))
 	l.add_theme_color_override("font_color", color)
 	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL; h.add_child(l)
@@ -1029,19 +1032,21 @@ func _process(delta: float) -> void:
 		btn.disabled = GameState.credits < cost
 		_afford(btn, not btn.disabled)
 		var ulvl := int(GameState.levels[key])
-		row["detail"].text = "Nv %d · %s (%s)" % [ulvl, _effect_total(key, ulvl), _effect(key)] if ulvl > 0 else "Nv 0 · %s" % _effect(key)
+		row["detail"].text = tr("Nv %d · %s (%s)") % [ulvl, _effect_total(key, ulvl), _effect(key)] if ulvl > 0 else tr("Nv 0 · %s") % _effect(key)
 
 	for key: String in _talent_rows:
 		var tp: Dictionary = Economy.TALENTS[key]; var lvl := int(GameState.talents[key])
-		var tr: Dictionary = _talent_rows[key]
-		var tbtn: Button = tr["btn"]
+		# NOTE: named "trow" (not "tr") — "tr" would shadow the global tr()
+		# translation function used two lines below.
+		var trow: Dictionary = _talent_rows[key]
+		var tbtn: Button = trow["btn"]
 		if lvl >= int(tp["max"]):
-			tbtn.text = "MÁX"; tbtn.disabled = true; tbtn.icon = null
+			tbtn.text = tr("MÁX"); tbtn.disabled = true; tbtn.icon = null
 		else:
 			tbtn.text = str(GameState.talent_cost(key)); tbtn.disabled = not GameState.can_buy_talent(key)
 		_afford(tbtn, not tbtn.disabled)
 		var tdesc: String = _talent_effect_total(key, lvl) if lvl > 0 else str(tp["desc"])
-		tr["detail"].text = "Nv %d/%d · %s" % [lvl, int(tp["max"]), tdesc]
+		trow["detail"].text = tr("Nv %d/%d · %s") % [lvl, int(tp["max"]), tdesc]
 
 	var gb: Dictionary = _gem_rows.get("boost", {})
 	if not gb.is_empty():
@@ -1058,34 +1063,34 @@ func _process(delta: float) -> void:
 	if not gct.is_empty():
 		var ct_btn: Button = gct["btn"]
 		if GameState.combo_window_bonus > 0.0:
-			ct_btn.text = "Obtido"; ct_btn.disabled = true; ct_btn.icon = null
+			ct_btn.text = tr("Obtido"); ct_btn.disabled = true; ct_btn.icon = null
 			_afford(ct_btn, false)
 		else:
 			var cc2: int = int(Economy.GEM_SHOP["combo_time"]["cost"])
 			ct_btn.text = str(cc2); ct_btn.disabled = GameState.gems < cc2
 			_afford(ct_btn, not ct_btn.disabled)
 
-	_progress_lbl.text = "%s — %d/%d cidades abertas." % [Economy.country_name(GameState.current_country), GameState.cities_unlocked, GameState.max_cities()]
+	_progress_lbl.text = tr("%s — %d/%d cidades abertas.") % [Economy.country_name(GameState.current_country), GameState.cities_unlocked, GameState.max_cities()]
 	var cc := GameState.next_city_cost()
 	if cc < 0.0:
-		_city_btn.disabled = true; _city_btn.text = "TODAS"
-		_city_detail.text = "Todas as cidades estão abertas."
+		_city_btn.disabled = true; _city_btn.text = tr("TODAS")
+		_city_detail.text = tr("Todas as cidades estão abertas.")
 	else:
 		_city_btn.text = Fmt.short(cc); _city_btn.disabled = GameState.credits < cc
 		var ci := GameState.current_country; var cities := Economy.country_cities(ci)
 		var nx: int = clampi(GameState.cities_unlocked + 1, 1, cities.size() - 1)
-		_city_detail.text = "Próxima: " + cities[nx]["name"]
+		_city_detail.text = tr("Próxima: %s") % cities[nx]["name"]
 	_afford(_city_btn, not _city_btn.disabled and cc >= 0.0)
 	var ec := GameState.expand_cost()
 	if ec < 0.0:
-		_expand_btn.disabled = true; _expand_btn.text = "FIM"
-		_expand_detail.text = "Chegaste ao último país. Parabéns!"
+		_expand_btn.disabled = true; _expand_btn.text = tr("FIM")
+		_expand_detail.text = tr("Chegaste ao último país. Parabéns!")
 	elif not GameState.all_cities_unlocked():
-		_expand_btn.disabled = true; _expand_btn.text = "Bloqueado"
-		_expand_detail.text = "Abre todas as cidades de " + Economy.country_name(GameState.current_country) + " primeiro."
+		_expand_btn.disabled = true; _expand_btn.text = tr("Bloqueado")
+		_expand_detail.text = tr("Abre todas as cidades de %s primeiro.") % Economy.country_name(GameState.current_country)
 	else:
 		_expand_btn.text = Fmt.short(ec); _expand_btn.disabled = GameState.credits < ec
-		_expand_detail.text = "Seguinte: " + Economy.country_name(GameState.current_country + 1) + " (+Influência)"
+		_expand_detail.text = tr("Seguinte: %s (+Influência)") % Economy.country_name(GameState.current_country + 1)
 	_afford(_expand_btn, not _expand_btn.disabled and ec >= 0.0 and GameState.all_cities_unlocked())
 
 	# prestige button
@@ -1093,11 +1098,11 @@ func _process(delta: float) -> void:
 	if ready:
 		_prestige_btn.text = "PRESTIGE  (+%d)" % Prestige.pgems_on_next_prestige()
 		_prestige_btn.disabled = false
-		_prestige_info_lbl.text = "Tier: %s · Prestige #%d · ×%.2f\nReinicias mantendo gemas e conquistas." % [Prestige.tier_name(), Prestige.count + 1, Prestige.permanent_mult * 1.15]
+		_prestige_info_lbl.text = tr("Tier: %s · Prestige #%d · ×%.2f\nReinicias mantendo gemas e conquistas.") % [Prestige.tier_name(), Prestige.count + 1, Prestige.permanent_mult * 1.15]
 	else:
-		_prestige_btn.text = "Prestige (requer 5.º país)"
+		_prestige_btn.text = tr("Prestige (requer 5.º país)")
 		_prestige_btn.disabled = true
-		_prestige_info_lbl.text = "Chega ao 5.º país para fazer prestige.\nTier: %s · Prestige %d · ×%.2f" % [Prestige.tier_name(), Prestige.count, Prestige.permanent_mult]
+		_prestige_info_lbl.text = tr("Chega ao 5.º país para fazer prestige.\nTier: %s · Prestige %d · ×%.2f") % [Prestige.tier_name(), Prestige.count, Prestige.permanent_mult]
 	if ready != _prestige_ready_prev:
 		Fx.breathe(_prestige_btn, ready)
 		_prestige_ready_prev = ready
@@ -1223,7 +1228,7 @@ func _on_country_changed(i: int) -> void:
 			Fx.ring_pulse(self, c, UITheme.CYAN, 2.6)
 		Audio.play("prestige")
 	else:
-		_toast("Bem-vindo a " + Economy.country_name(i) + "!", UITheme.GOLD, "ic_city")
+		_toast(tr("Bem-vindo a %s!") % Economy.country_name(i), UITheme.GOLD, "ic_city")
 		Fx.confetti(self, c, 48, [UITheme.GOLD, UITheme.CYAN, UITheme.GREEN, UITheme.PINK])
 		Fx.screen_flash(self, UITheme.GOLD, 0.18)
 		Fx.screen_shake(_map, 9.0)
@@ -1332,7 +1337,7 @@ func _show_daily_popup() -> void:
 	var layer := _overlay(); var box := _popup_box(layer, UITheme.GOLD)
 	var hd := HBoxContainer.new(); hd.alignment = BoxContainer.ALIGNMENT_CENTER; hd.add_theme_constant_override("separation", 8)
 	hd.add_child(_icon("ic_daily", 30)); hd.add_child(_lbl("Recompensa Diária", 30, UITheme.GOLD)); box.add_child(hd)
-	var streak_info := _lbl("Streak: %d dias consecutivos!" % Daily.streak, 19, UITheme.INK)
+	var streak_info := _lbl(tr("Streak: %d dias consecutivos!") % Daily.streak, 19, UITheme.INK)
 	streak_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; box.add_child(streak_info)
 
 	var grid := GridContainer.new(); grid.columns = 7
@@ -1379,7 +1384,7 @@ func _show_prestige_confirm() -> void:
 	var hd := HBoxContainer.new(); hd.alignment = BoxContainer.ALIGNMENT_CENTER; hd.add_theme_constant_override("separation", 8)
 	hd.add_child(_icon("ic_prestige", 28)); hd.add_child(_lbl("Confirmar Prestige", 28, UITheme.PRESTIGE)); box.add_child(hd)
 	var gain := Prestige.pgems_on_next_prestige()
-	var info := _lbl("Vais ganhar  %d  Gemas Prestige\ne um multiplicador ×%.2f permanente.\n\nPerdes créditos, drones e upgrades.\nMantens gemas normais e conquistas." % [gain, Prestige.permanent_mult * 1.15], 18, UITheme.MUTED)
+	var info := _lbl(tr("Vais ganhar  %d  Gemas Prestige\ne um multiplicador ×%.2f permanente.\n\nPerdes créditos, drones e upgrades.\nMantens gemas normais e conquistas.") % [gain, Prestige.permanent_mult * 1.15], 18, UITheme.MUTED)
 	info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; box.add_child(info)
 	var confirm := Button.new(); confirm.text = "SIM, FAZER PRESTIGE"
@@ -1417,7 +1422,7 @@ func _settings_toggle(text: String, pressed: bool, cb: Callable) -> CheckButton:
 	return t
 
 func _settings_stats_text() -> String:
-	return "Entregas: %s  ·  Ganhos: %s\nRendimento: %s/s  ·  Combo: %d\nDrones: %d  ·  Países: %d/%d  ·  Streak: %dd\nPrestige: %d  ·  Conquistas: %d/%d" % [
+	return tr("Entregas: %s  ·  Ganhos: %s\nRendimento: %s/s  ·  Combo: %d\nDrones: %d  ·  Países: %d/%d  ·  Streak: %dd\nPrestige: %d  ·  Conquistas: %d/%d") % [
 		Fmt.short(float(GameState.total_deliveries)), Fmt.short(GameState.total_earned),
 		Fmt.short(GameState.income_per_sec()), GameState.combo,
 		GameState.drones, GameState.current_country + 1, Economy.num_countries(), Daily.streak,
@@ -1434,6 +1439,26 @@ func _show_settings() -> void:
 		func(on): Fx.haptics = on; SaveSystem.save_game()))
 	box.add_child(_settings_toggle("Reduzir animações", Fx.reduce_motion,
 		func(on): Fx.set_reduce_motion(on); SaveSystem.save_game()))
+
+	var lang_row := HBoxContainer.new(); lang_row.add_theme_constant_override("separation", 6)
+	box.add_child(lang_row)
+	var lang_lbl := _lbl("Idioma / Language", 22, UITheme.INK)
+	lang_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL; lang_row.add_child(lang_lbl)
+	var eff_locale := Fx.locale if Fx.locale != "" else TranslationServer.get_locale()
+	var pt_btn := Button.new(); pt_btn.text = "PT"; pt_btn.custom_minimum_size = Vector2(64, 56)
+	var en_btn := Button.new(); en_btn.text = "EN"; en_btn.custom_minimum_size = Vector2(64, 56)
+	pt_btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	en_btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	var refresh_lang_btns := func():
+		var is_pt := not eff_locale.begins_with("en")
+		pt_btn.add_theme_stylebox_override("normal", UITheme.seg(is_pt))
+		pt_btn.add_theme_stylebox_override("hover", UITheme.seg(is_pt))
+		en_btn.add_theme_stylebox_override("normal", UITheme.seg(not is_pt))
+		en_btn.add_theme_stylebox_override("hover", UITheme.seg(not is_pt))
+	refresh_lang_btns.call()
+	pt_btn.pressed.connect(func(): eff_locale = "pt"; Fx.set_locale("pt"); SaveSystem.save_game(); Fx.press(pt_btn); refresh_lang_btns.call())
+	en_btn.pressed.connect(func(): eff_locale = "en"; Fx.set_locale("en"); SaveSystem.save_game(); Fx.press(en_btn); refresh_lang_btns.call())
+	lang_row.add_child(pt_btn); lang_row.add_child(en_btn)
 
 	var rule := Panel.new(); rule.custom_minimum_size = Vector2(0, 2)
 	rule.add_theme_stylebox_override("panel", UITheme.section_rule()); box.add_child(rule)
@@ -1457,7 +1482,7 @@ func _show_settings() -> void:
 	restore.pressed.connect(func(): Fx.press(restore); _toast("A verificar compras...", UITheme.ACCENT); SaveSystem.save_game())
 	box.add_child(restore)
 
-	var ver := _lbl("Drone Tycoon: Sky Fleet · v1.14.0 · © 2026 LPCF", 15, UITheme.MUTED)
+	var ver := _lbl("Drone Tycoon: Sky Fleet · v1.15.0 · © 2026 LPCF", 15, UITheme.MUTED)
 	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	ver.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	box.add_child(ver)
@@ -1494,7 +1519,7 @@ func _show_reset_confirm() -> void:
 func _show_offline_popup(amount: float, seconds: float) -> void:
 	var layer := _overlay(); var box := _popup_box(layer, UITheme.ACCENT)
 	box.add_child(_lbl("Bem-vindo de volta!", 30, UITheme.INK))
-	var m := _lbl("Os drones entregaram durante %s:" % Fmt.duration(seconds), 19, UITheme.MUTED)
+	var m := _lbl(tr("Os drones entregaram durante %s:") % Fmt.duration(seconds), 19, UITheme.MUTED)
 	m.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; m.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; box.add_child(m)
 	var big := _lbl(Fmt.short(amount), 40, UITheme.GOLD)
 	big.add_theme_font_override("font", UITheme.font("Bold"))
@@ -1503,7 +1528,12 @@ func _show_offline_popup(amount: float, seconds: float) -> void:
 	box.add_child(big)
 	if not Fx.reduce_motion:
 		var ctw := create_tween()
-		ctw.tween_method(func(v: float): big.text = Fmt.short(v), 0.0, amount, 0.9) \
+		# guard: a player who taps "Recolher" before the 0.9s count-up finishes
+		# frees `big` (and the whole popup) while this tween is still stepping it
+		var _set_big_text := func(v: float) -> void:
+			if is_instance_valid(big):
+				big.text = Fmt.short(v)
+		ctw.tween_method(_set_big_text, 0.0, amount, 0.9) \
 			.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	var collect := Button.new(); collect.text = "Recolher"
 	collect.add_theme_font_size_override("font_size", 24); collect.custom_minimum_size = Vector2(0, 70)
@@ -1632,7 +1662,7 @@ func _check_income_milestones() -> void:
 	var ips := GameState.income_per_sec()
 	while _income_milestone_idx < INCOME_MILESTONES.size() and ips >= float(INCOME_MILESTONES[_income_milestone_idx]):
 		var lbl: String = str(MILESTONE_LABELS[_income_milestone_idx])
-		_toast("Nova marca: " + lbl + "/s!", UITheme.GREEN, "ic_fleet")
+		_toast(tr("Nova marca: %s/s!") % lbl, UITheme.GREEN, "ic_fleet")
 		var c := Vector2(size.x * 0.5, size.y * 0.43)
 		Fx.confetti(self, c, 36, [UITheme.GREEN, UITheme.GOLD, UITheme.CYAN])
 		Fx.screen_flash(self, UITheme.GREEN, 0.12)
@@ -1653,7 +1683,7 @@ func _update_contracts() -> void:
 		var rem := Contracts.time_remaining(i)
 		var t_lbl := _mission_time_lbls[i] as Label
 		if s.get("claimed", false):
-			t_lbl.text = "Nova em %ds" % int(rem)
+			t_lbl.text = tr("Nova em %ds") % int(rem)
 		elif i == 3:
 			t_lbl.text = "%dd %dh" % [int(rem) / 86400, (int(rem) % 86400) / 3600]
 		else:
