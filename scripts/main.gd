@@ -1,5 +1,5 @@
 extends Control
-## Main scene — Drone Tycoon: Sky Fleet  v1.15.0
+## Main scene — Drone Tycoon: Sky Fleet  v1.16.0
 
 const NAV_H  := 132.0
 const TABS_H := 532.0
@@ -8,6 +8,7 @@ const ART    := "res://assets/art/"
 const GUTTER := 12.0
 
 var _map: MapView
+var _bonus: BonusDrone
 var _hud: PanelContainer
 var _adbar: HBoxContainer
 var _pages: Array
@@ -44,6 +45,9 @@ var _prev_combo_mult := 1.0
 var _rows := {}
 var _talent_rows := {}
 var _gem_rows := {}
+var _skin_rows := {}
+var _offer_card: PanelContainer = null
+var _offer_time_lbl: Label = null
 var _mode_btns := {}
 var _drone_btn: Button
 var _drone_detail: Label
@@ -94,7 +98,7 @@ func _ready() -> void:
 		DisplayServer.screen_set_orientation(DisplayServer.SCREEN_PORTRAIT)
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	theme = UITheme.build()
-	_bg(); _build_map(); _build_hud()
+	_bg(); _build_map(); _build_bonus_drone(); _build_hud()
 	_build_bottom_bg(); _build_adbar(); _build_pages(); _build_nav(); _build_toasts()
 
 	GameState.city_unlocked.connect(_on_city_unlocked)
@@ -199,6 +203,11 @@ func _build_map() -> void:
 		vr.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		vr.modulate = Color(1, 1, 1, 0.3); vr.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		add_child(vr)
+
+func _build_bonus_drone() -> void:
+	_bonus = BonusDrone.new()
+	_bonus.caught.connect(_show_bonus_popup)
+	add_child(_bonus)
 
 # ── HUD ───────────────────────────────────────────────────────────────────────
 
@@ -749,6 +758,7 @@ func _make_achievement_row(id: String) -> PanelContainer:
 
 func _build_shop_tab() -> ScrollContainer:
 	var r := _scroll("Loja"); var v: VBoxContainer = r[1]
+	_build_offer_card(v)
 	var gi := _card(UITheme.CYAN)
 	var gv := HBoxContainer.new(); gv.add_theme_constant_override("separation", 6); gi.add_child(gv)
 	gv.add_child(_icon("ic_gems", 22))
@@ -756,6 +766,12 @@ func _build_shop_tab() -> ScrollContainer:
 	v.add_child(gi)
 	for id: String in Economy.GEM_SHOP_ORDER:
 		v.add_child(_make_gem_row(id))
+
+	v.add_child(_section("Hangar de Skins", UITheme.CYAN, "ic_drone"))
+	var sk_info := _lbl("Skins permanentes para a tua frota. Cada skin extra dá +2% de lucros.", 15, UITheme.MUTED)
+	sk_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; v.add_child(sk_info)
+	for id: String in Economy.SKIN_ORDER:
+		v.add_child(_make_skin_row(id))
 
 	var daily_card := _card(UITheme.GOLD); v.add_child(daily_card)
 	var daily_v := VBoxContainer.new(); daily_v.add_theme_constant_override("separation", 4); daily_card.add_child(daily_v)
@@ -778,6 +794,56 @@ func _build_shop_tab() -> ScrollContainer:
 	for id: String in Billing.PRODUCT_ORDER:
 		v.add_child(_make_iap_row(id))
 	return r[0]
+
+## Limited-time highlight of the starter pack (real Play product). Countdown to
+## local midnight; the card hides once the pack is owned or VIP is active.
+func _build_offer_card(v: VBoxContainer) -> void:
+	_offer_card = _card(UITheme.GOLD)
+	var ov := VBoxContainer.new(); ov.add_theme_constant_override("separation", 5); _offer_card.add_child(ov)
+	var oh := HBoxContainer.new(); oh.add_theme_constant_override("separation", 6); ov.add_child(oh)
+	oh.add_child(_icon("ic_boost", 24))
+	var ot := _lbl("Oferta de Fundador", 21, UITheme.GOLD)
+	ot.add_theme_font_override("font", UITheme.font("Bold"))
+	ot.size_flags_horizontal = Control.SIZE_EXPAND_FILL; oh.add_child(ot)
+	_offer_time_lbl = _lbl("", 16, UITheme.ORANGE)
+	_offer_time_lbl.add_theme_font_override("font", UITheme.font("Bold")); oh.add_child(_offer_time_lbl)
+	var od := _lbl(str(Billing.PRODUCTS["starter"]["desc"]), 15, UITheme.MUTED)
+	od.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; ov.add_child(od)
+	var ob := _wide_btn(UITheme.GOLD.darkened(0.06))
+	ob.text = str(Billing.PRODUCTS["starter"]["price"]) + "  ·  " + tr("Começar já!")
+	ob.add_theme_color_override("font_color", Color(0.12, 0.08, 0.0))
+	ob.custom_minimum_size = Vector2(0, 62)
+	ob.pressed.connect(func():
+		if not _can_tap(): return
+		Fx.press(ob); Billing.buy("starter"); Audio.play("buy")
+	)
+	ov.add_child(ob)
+	Fx.shimmer(ob, UITheme.GOLD, true)
+	v.add_child(_offer_card)
+
+func _make_skin_row(id: String) -> PanelContainer:
+	var p: Dictionary = Economy.SKINS[id]
+	var body: Color = p["body"]
+	var r := _row(body if id != "classic" else UITheme.CYAN, "ic_drone")
+	r["title"].text = p["name"]
+	r["detail"].text = p["desc"]; r["detail"].autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	var btn := _cbuy(UITheme.CYAN.darkened(0.18), 120.0)
+	btn.pressed.connect(func():
+		if not _can_tap(): return
+		if GameState.has_skin(id):
+			if GameState.set_skin(id):
+				Fx.press(btn); Audio.play("whoosh")
+				_toast(tr("Skin ativa: %s") % tr(str(p["name"])), body, "ic_drone")
+		elif GameState.buy_skin(id):
+			Fx.press(btn); Audio.play("buy"); _reward_fx(btn, body, "gem", 8)
+			_toast(tr("Nova skin: %s!") % tr(str(p["name"])), body, "ic_drone")
+			Fx.confetti(self, Vector2(size.x * 0.5, size.y * 0.45), 24, [body, UITheme.CYAN, UITheme.GOLD])
+		else:
+			Fx.error_shake(btn)
+	)
+	r["right"].add_child(btn)
+	_skin_rows[id] = {"btn": btn}
+	return r["card"]
 
 # ── Card / button widgets ─────────────────────────────────────────────────────
 
@@ -837,8 +903,16 @@ func _make_upgrade_row(key: String) -> PanelContainer:
 	var btn := _cbuy(UITheme.GREEN)
 	btn.pressed.connect(func():
 		if not _can_tap(): return
+		var before_tier := int(GameState.levels[key]) / Economy.MILESTONE_STEP
 		if GameState.buy_upgrade_multi(key) > 0:
 			Fx.press(btn); Audio.play("buy"); _reward_fx(btn, accent, "spark", 6)
+			if int(GameState.levels[key]) / Economy.MILESTONE_STEP > before_tier:
+				_toast(tr("MARCO! %s ×2!") % tr(str(Economy.UPGRADES[key]["name"])), UITheme.GOLD, "ic_achieve")
+				var c := Vector2(size.x * 0.5, size.y * 0.45)
+				Fx.confetti(self, c, 30, [UITheme.GOLD, accent, UITheme.CYAN])
+				Fx.screen_flash(self, UITheme.GOLD, 0.12)
+				Fx.ring_pulse(self, c, UITheme.GOLD, 2.6)
+				Audio.play("milestone")
 		else:
 			Fx.error_shake(btn)
 	)
@@ -1003,6 +1077,8 @@ func _process(delta: float) -> void:
 
 	_map.band_top    = _hud.position.y + _hud.size.y + 8.0
 	_map.band_bottom = _adbar.position.y - 8.0
+	_bonus.band_top = _map.band_top
+	_bonus.band_bottom = _map.band_bottom
 
 	# progress ribbon (HUD): % to next city or expand
 	_set_fill(_ribbon_fill, _unlock_progress())
@@ -1032,7 +1108,10 @@ func _process(delta: float) -> void:
 		btn.disabled = GameState.credits < cost
 		_afford(btn, not btn.disabled)
 		var ulvl := int(GameState.levels[key])
-		row["detail"].text = tr("Nv %d · %s (%s)") % [ulvl, _effect_total(key, ulvl), _effect(key)] if ulvl > 0 else tr("Nv 0 · %s") % _effect(key)
+		var mm := int(Economy.milestone_mult(ulvl))
+		var nxt := (ulvl / Economy.MILESTONE_STEP + 1) * Economy.MILESTONE_STEP
+		var mi: String = (tr("Marco ×%d · próx. Nv %d") % [mm, nxt]) if mm > 1 else (tr("Marco ×2 ao Nv %d") % nxt)
+		row["detail"].text = (tr("Nv %d · %s · %s") % [ulvl, _effect_total(key, ulvl), mi]) if ulvl > 0 else (tr("Nv 0 · %s · %s") % [_effect(key), mi])
 
 	for key: String in _talent_rows:
 		var tp: Dictionary = Economy.TALENTS[key]; var lvl := int(GameState.talents[key])
@@ -1069,6 +1148,28 @@ func _process(delta: float) -> void:
 			var cc2: int = int(Economy.GEM_SHOP["combo_time"]["cost"])
 			ct_btn.text = str(cc2); ct_btn.disabled = GameState.gems < cc2
 			_afford(ct_btn, not ct_btn.disabled)
+
+	for sid: String in _skin_rows:
+		var sbtn: Button = _skin_rows[sid]["btn"]
+		if GameState.skin_active == sid:
+			sbtn.text = tr("Ativa"); sbtn.disabled = true; sbtn.icon = _opt_tex("ic_check")
+			_afford(sbtn, false)
+		elif GameState.has_skin(sid):
+			sbtn.text = tr("Usar"); sbtn.disabled = false; sbtn.icon = null
+			_afford(sbtn, true)
+		else:
+			var scost: int = int(Economy.SKINS[sid]["cost"])
+			sbtn.text = str(scost); sbtn.icon = _opt_tex("ic_gems")
+			sbtn.disabled = GameState.gems < scost
+			_afford(sbtn, not sbtn.disabled)
+
+	if _offer_card != null:
+		var show_offer: bool = not Billing.starter_owned and not Billing.vip
+		_offer_card.visible = show_offer
+		if show_offer and Engine.get_frames_drawn() % 30 == 0:
+			var now := Time.get_datetime_dict_from_system()
+			var left: int = (23 - int(now["hour"])) * 3600 + (59 - int(now["minute"])) * 60 + (60 - int(now["second"]))
+			_offer_time_lbl.text = tr("Termina em %d:%02d:%02d") % [left / 3600, (left % 3600) / 60, left % 60]
 
 	_progress_lbl.text = tr("%s — %d/%d cidades abertas.") % [Economy.country_name(GameState.current_country), GameState.cities_unlocked, GameState.max_cities()]
 	var cc := GameState.next_city_cost()
@@ -1379,6 +1480,55 @@ func _show_daily_popup() -> void:
 		box.add_child(claim_btn)
 	var close := _close_btn(layer); box.add_child(close)
 
+## Reward choice after tapping the golden bonus drone: small free reward now,
+## or watch a rewarded ad for the (randomized-at-spawn) big reward.
+func _show_bonus_popup(ad_reward: Dictionary) -> void:
+	Audio.play("unlock")
+	var layer := _overlay(); var box := _popup_box(layer, UITheme.GOLD)
+	var hd := HBoxContainer.new(); hd.alignment = BoxContainer.ALIGNMENT_CENTER; hd.add_theme_constant_override("separation", 8)
+	hd.add_child(_icon("ic_drone", 30)); hd.add_child(_lbl("Drone Bónus!", 30, UITheme.GOLD)); box.add_child(hd)
+	var info := _lbl("Apanhaste um drone de carga dourado.\nEscolhe a tua recompensa:", 18, UITheme.MUTED)
+	info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; box.add_child(info)
+
+	var free_btn := _wide_btn(UITheme.PANEL2)
+	free_btn.text = tr("Receber: +3 min de lucros")
+	free_btn.custom_minimum_size = Vector2(0, 64)
+	free_btn.pressed.connect(func():
+		GameState.grant_cash_minutes(3.0)
+		_disp_credits = GameState.credits
+		Fx.chip_pop(_credits_chip, UITheme.GOLD)
+		_toast(tr("+3 min de lucros!"), UITheme.GREEN, "ic_cash")
+		layer.queue_free()
+	)
+	box.add_child(free_btn)
+
+	var kind: String = str(ad_reward.get("kind", "cash"))
+	var ad_btn := _wide_btn(UITheme.GREEN)
+	ad_btn.text = tr(str(ad_reward.get("label", "")))
+	ad_btn.icon = _opt_tex("ic_ad"); ad_btn.expand_icon = true
+	ad_btn.add_theme_constant_override("icon_max_width", 24)
+	ad_btn.custom_minimum_size = Vector2(0, 70)
+	ad_btn.pressed.connect(func():
+		layer.queue_free()
+		Ads.show_rewarded("bonus_drone", func():
+			match kind:
+				"boost":
+					GameState.earn_boost_timer = 600.0
+					_toast(tr("Lucros ×2 durante 10 min!"), UITheme.GREEN, "ic_boost")
+				"gems":
+					GameState.grant_gems(40)
+					_toast(tr("+40 Gemas!"), UITheme.CYAN, "ic_gems")
+				_:
+					GameState.grant_cash_minutes(20.0)
+					_disp_credits = GameState.credits
+					Fx.chip_pop(_credits_chip, UITheme.GOLD)
+					_toast(tr("+20 min de lucros!"), UITheme.GREEN, "ic_cash")
+		)
+	)
+	box.add_child(ad_btn)
+	Fx.shimmer(ad_btn, UITheme.GREEN, true)
+
 func _show_prestige_confirm() -> void:
 	var layer := _overlay(); var box := _popup_box(layer, UITheme.PRESTIGE)
 	var hd := HBoxContainer.new(); hd.alignment = BoxContainer.ALIGNMENT_CENTER; hd.add_theme_constant_override("separation", 8)
@@ -1479,10 +1629,17 @@ func _show_settings() -> void:
 	var restore := _wide_btn(UITheme.ACCENT); restore.text = "Restaurar compras"
 	restore.custom_minimum_size = Vector2(0, 84)
 	restore.add_theme_font_size_override("font_size", 26)
-	restore.pressed.connect(func(): Fx.press(restore); _toast("A verificar compras...", UITheme.ACCENT); SaveSystem.save_game())
+	restore.pressed.connect(func():
+		Fx.press(restore)
+		if Billing.restore():
+			_toast("A verificar compras na Google Play...", UITheme.ACCENT)
+		else:
+			_toast("Disponível apenas na versão Android.", UITheme.MUTED)
+		SaveSystem.save_game()
+	)
 	box.add_child(restore)
 
-	var ver := _lbl("Drone Tycoon: Sky Fleet · v1.15.0 · © 2026 LPCF", 15, UITheme.MUTED)
+	var ver := _lbl("Drone Tycoon: Sky Fleet · v1.16.0 · © 2026 LPCF", 15, UITheme.MUTED)
 	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	ver.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	box.add_child(ver)

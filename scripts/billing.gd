@@ -11,6 +11,7 @@ signal purchase_failed(product_id: String, reason: String)
 var ads_removed := false
 var perm_mult := 1.0
 var vip := false               # VIP pass: 2x always + 24h offline + bonus
+var starter_owned := false     # hides the "Founder offer" card once bought
 
 const PRODUCTS := {
 	"starter":  {"name": "Pacote Inicial", "price": "€2,99", "type": "nonconsumable", "desc": "+300 Gemas, +5 drones e Lucros x2 por 1h. Arranque rápido!"},
@@ -103,17 +104,28 @@ func _grant(product_id: String) -> void:
 		"vip":
 			vip = true; ads_removed = true; GameState.gems += 500
 		"starter":
+			starter_owned = true
 			GameState.gems += 300; GameState.drones += 5; GameState._rebuild_drones()
 			GameState.boost_earn_2x()
 	purchased.emit(product_id)
 	if has_node("/root/SaveSystem"):
 		SaveSystem.save_game()
 
+## Re-query Google Play for owned purchases ("Restaurar compras" in settings).
+## Returns false when the real billing client isn't available (editor/desktop).
+func restore() -> bool:
+	if _client == null or not _connected:
+		return false
+	_client.query_purchases(BillingClient.ProductType.INAPP)
+	return true
+
 func to_dict() -> Dictionary:
-	return {"ads_removed": ads_removed, "perm_mult": perm_mult, "vip": vip, "processed_tokens": _processed_tokens.duplicate()}
+	return {"ads_removed": ads_removed, "perm_mult": perm_mult, "vip": vip,
+		"starter_owned": starter_owned, "processed_tokens": _processed_tokens.duplicate()}
 
 func from_dict(d: Dictionary) -> void:
 	ads_removed = bool(d.get("ads_removed", false))
 	perm_mult = float(d.get("perm_mult", 1.0))
 	vip = bool(d.get("vip", false))
+	starter_owned = bool(d.get("starter_owned", false))
 	_processed_tokens = Array(d.get("processed_tokens", []))

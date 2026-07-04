@@ -495,6 +495,8 @@ func _draw_routes(cap: Vector2, cities: Array) -> void:
 # ---------------------------------------------------------------- drones
 
 func _draw_drones(cap: Vector2, cities: Array) -> void:
+	var skin: Dictionary = Economy.SKINS.get(GameState.skin_active, Economy.SKINS["classic"])
+	var body: Color = skin["body"]
 	for di in range(GameState.vdrones.size()):
 		var v: Dictionary = GameState.vdrones[di]
 		var route: int = int(v["route"])
@@ -539,13 +541,14 @@ func _draw_drones(cap: Vector2, cities: Array) -> void:
 		var tex: Texture2D = _drone_tex[di % _drone_tex.size()]
 		if tex != null:
 			draw_set_transform(pos, ang, Vector2(dsc, dsc))
-			draw_texture_rect(tex, Rect2(-20, -20, 40, 40), false)
+			draw_texture_rect(tex, Rect2(-20, -20, 40, 40), false, body)
 			draw_set_transform_matrix(Transform2D.IDENTITY)
 
 func _draw_trail(hist: Array, di: int) -> void:
 	if hist.size() < 2:
 		return
-	var col := CYAN
+	var skin: Dictionary = Economy.SKINS.get(GameState.skin_active, Economy.SKINS["classic"])
+	var col: Color = skin["trail"]
 	for i in range(hist.size() - 1):
 		var f := float(i) / float(hist.size())
 		var a := 0.30 * f

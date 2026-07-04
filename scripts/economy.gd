@@ -35,6 +35,29 @@ const GEM_SHOP := {
 	"combo_time": {"name": "Combo Duradouro", "desc": "O combo demora o DOBRO do tempo a expirar. Permanente.", "cost": 150, "icon": "ic_speed"},
 }
 
+## Upgrade milestones: every MILESTONE_STEP levels an upgrade's effect DOUBLES.
+## Gives every upgrade purchase a visible next goal (idle-genre staple).
+const MILESTONE_STEP := 25
+
+func milestone_mult(level: int) -> float:
+	return pow(2.0, float(level / MILESTONE_STEP))
+
+## Drone skins — permanent cosmetics bought with gems, visible on the map.
+## Each owned premium skin also adds +2% global profits (collection bonus).
+const SKIN_ORDER := ["classic", "solar", "neon", "stealth", "aurora"]
+const SKINS := {
+	"classic": {"name": "Frota Clássica", "desc": "O visual original da frota.", "cost": 0,
+		"body": Color(1.0, 1.0, 1.0), "trail": Color(0.227, 0.839, 0.941)},
+	"solar":   {"name": "Frota Solar", "desc": "Dourado radiante com rasto âmbar.", "cost": 150,
+		"body": Color(1.0, 0.84, 0.45), "trail": Color(1.0, 0.784, 0.220)},
+	"neon":    {"name": "Frota Néon", "desc": "Rosa elétrico com rasto magenta.", "cost": 250,
+		"body": Color(1.0, 0.55, 0.85), "trail": Color(1.0, 0.35, 0.75)},
+	"stealth": {"name": "Frota Sombra", "desc": "Fuselagem escura com rasto vermelho.", "cost": 400,
+		"body": Color(0.45, 0.50, 0.62), "trail": Color(1.0, 0.30, 0.28)},
+	"aurora":  {"name": "Frota Aurora", "desc": "Verde-ciano boreal. A elite do céu.", "cost": 600,
+		"body": Color(0.55, 1.0, 0.85), "trail": Color(0.25, 0.95, 0.60)},
+}
+
 func _ready() -> void:
 	var f := FileAccess.open("res://data/world.json", FileAccess.READ)
 	if f:

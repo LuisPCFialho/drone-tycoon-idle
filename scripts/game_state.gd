@@ -27,6 +27,8 @@ var drones := 1
 var levels := {"speed": 0, "cargo": 0, "value": 0, "routes": 0}
 var talents := {"global": 0, "speed": 0, "value": 0, "hangar": 0}
 var gem_boost := 0
+var skins_owned: Array = ["classic"]
+var skin_active := "classic"
 var earn_boost_timer := 0.0
 var total_earned := 0.0
 var total_deliveries := 0
@@ -50,19 +52,24 @@ func max_cities() -> int:
 	return Economy.country_cities(current_country).size() - 1   # excludes capital
 
 func speed_factor() -> float:
-	var base := 1.0 + 0.03 * float(levels["speed"]) + 0.04 * float(talents["speed"])
+	var base := (1.0 + 0.03 * float(levels["speed"]) * Economy.milestone_mult(int(levels["speed"]))) \
+		+ 0.04 * float(talents["speed"])
 	return base * Events.current_spd_mult
 
 func vip_mult() -> float:
 	return 2.0 if Billing.vip else 1.0
 
+func skin_collection_mult() -> float:
+	return 1.0 + 0.02 * float(max(0, skins_owned.size() - 1))
+
 func global_mult() -> float:
 	return (1.0 + 0.05 * float(influence)) * (1.0 + 0.06 * float(talents["global"])) \
 		* (1.0 + 0.25 * float(gem_boost)) * Billing.perm_mult * vip_mult() \
-		* Events.current_mult * Prestige.permanent_mult
+		* Events.current_mult * Prestige.permanent_mult * skin_collection_mult()
 
 func route_mult() -> float:
-	return 1.0 + 0.025 * float(levels.get("routes", 0))
+	var rl := int(levels.get("routes", 0))
+	return 1.0 + 0.025 * float(rl) * Economy.milestone_mult(rl)
 
 func combo_mult() -> float:
 	if combo >= 100: return 2.0
@@ -89,7 +96,9 @@ func _route_dist(r: int) -> float:
 
 ## Credits for one delivery to a route (weak upgrade gains; scales with country tier).
 func per_delivery(dist: float) -> float:
-	var vf := (1.0 + 0.25 * float(levels["cargo"])) * pow(1.04, float(levels["value"])) * (1.0 + 0.04 * float(talents["value"]))
+	var vf := (1.0 + 0.25 * float(levels["cargo"]) * Economy.milestone_mult(int(levels["cargo"]))) \
+		* pow(1.04, float(levels["value"])) * Economy.milestone_mult(int(levels["value"])) \
+		* (1.0 + 0.04 * float(talents["value"]))
 	return BASE_DELIV * vf * (1.0 + dist) * Economy.pay_tier(current_country) * global_mult() * route_mult()
 
 func fleet_scale() -> float:
@@ -302,6 +311,29 @@ func buy_gem_combo_time(cost: int) -> bool:
 	Achievements.note_gems_spent(cost)
 	return true
 
+# ---------------------------------------------------------------- skins
+func has_skin(id: String) -> bool:
+	return id in skins_owned
+
+func buy_skin(id: String) -> bool:
+	if not Economy.SKINS.has(id) or has_skin(id):
+		return false
+	var c := int(Economy.SKINS[id]["cost"])
+	if gems < c:
+		return false
+	gems -= c
+	skins_owned.append(id)
+	skin_active = id
+	Achievements.note_gems_spent(c)
+	SaveSystem.save_game()
+	return true
+
+func set_skin(id: String) -> bool:
+	if not has_skin(id):
+		return false
+	skin_active = id
+	return true
+
 # ---------------------------------------------------------------- boosts/offline
 func boost_earn_2x() -> void:
 	earn_boost_timer = EARN_BOOST_DURATION
@@ -327,6 +359,7 @@ func to_dict() -> Dictionary:
 		"levels": levels.duplicate(), "talents": talents.duplicate(), "gem_boost": gem_boost,
 		"earn_boost_timer": earn_boost_timer, "total_earned": total_earned, "total_deliveries": total_deliveries,
 		"combo_window_bonus": combo_window_bonus,
+		"skins_owned": skins_owned.duplicate(), "skin_active": skin_active,
 	}
 
 func from_dict(d: Dictionary) -> void:
@@ -352,4 +385,12 @@ func from_dict(d: Dictionary) -> void:
 	total_earned = float(d.get("total_earned", 0.0))
 	total_deliveries = int(d.get("total_deliveries", 0))
 	combo_window_bonus = float(d.get("combo_window_bonus", 0.0))
+	skins_owned = ["classic"]
+	for s in Array(d.get("skins_owned", [])):
+		var sid: String = str(s)
+		if Economy.SKINS.has(sid) and sid not in skins_owned:
+			skins_owned.append(sid)
+	skin_active = str(d.get("skin_active", "classic"))
+	if not has_skin(skin_active):
+		skin_active = "classic"
 	_rebuild_drones()
