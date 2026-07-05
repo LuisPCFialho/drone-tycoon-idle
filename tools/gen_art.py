@@ -896,6 +896,56 @@ def app_icon_adaptive(n=432):
     fg = _icon_hero_layer(n, drone_scale=0.40, dcy_frac=0.42)
     fg.save(os.path.join(root, "appicon_fg.png"))
 
+## Derives appicon.png / appicon_bg.png / appicon_fg.png from the externally
+## provided hero artwork ("Logo app Drone Tycoon.png", project root) instead
+## of the procedural drone above. That source PNG is the app's actual logo —
+## keep it as the single source of truth; this function only handles the
+## Android-specific slicing (legacy square + adaptive foreground/background)
+## it doesn't come pre-split as. Falls back to the procedural icon if the
+## source file is ever removed, so `python tools/gen_art.py` never breaks.
+def app_icon_from_logo(n=512, an=432,
+                        source="Logo app Drone Tycoon.png"):
+    root = os.path.join(os.path.dirname(__file__), "..")
+    src_path = os.path.join(root, source)
+    if not os.path.exists(src_path):
+        app_icon(n); app_icon_adaptive(an)
+        return
+    src = Image.open(src_path).convert("RGB")
+    # the source has a ~1% near-black margin around its own rounded-icon
+    # render — crop it out so the legacy icon is a true full-bleed square
+    bbox = src.convert("L").point(lambda p: 255 if p > 14 else 0).getbbox()
+    cropped = src.crop(bbox) if bbox else src
+    w, h = cropped.size
+
+    # --- legacy / Play Store icon: the artwork as provided, incl. wordmark
+    cropped.resize((n, n), Image.LANCZOS).save(os.path.join(root, "appicon.png"))
+
+    # --- adaptive background: the game's standard blue gradient (matches the
+    # artwork's own palette; a photographic background would fight the
+    # foreground once Android composites/parallaxes the two layers)
+    _icon_bg_gradient(an).convert("RGB").save(os.path.join(root, "appicon_bg.png"))
+
+    # --- adaptive foreground: drone+package only (no wordmark — Android
+    # adaptive icons crop unpredictably per-launcher, and truncated text reads
+    # as broken), softly feathered so it blends into transparency rather than
+    # showing a hard photo-rectangle edge on the home screen.
+    x0, x1 = int(w*0.10), int(w*0.90)
+    y0, y1 = int(h*0.06), int(h*0.58)
+    hero = cropped.crop((x0, y0, x1, y1)).convert("RGBA")
+    hw, hh = hero.size
+    mask = Image.new("L", (hw, hh), 0)
+    ImageDraw.Draw(mask).ellipse([hw*0.02, hh*0.02, hw*0.98, hh*0.98], fill=255)
+    mask = mask.filter(ImageFilter.GaussianBlur(hw*0.05))
+    hero.putalpha(mask)
+    canvas = Image.new("RGBA", (an, an), (0, 0, 0, 0))
+    scale = min((an*0.90)/hw, (an*0.82)/hh)
+    nw, nh = int(hw*scale), int(hh*scale)
+    hero_r = hero.resize((nw, nh), Image.LANCZOS)
+    cx = (an - nw)//2
+    cy = int(an*0.46 - nh*0.5)
+    canvas.alpha_composite(hero_r, (cx, cy))
+    canvas.save(os.path.join(root, "appicon_fg.png"))
+
 # ---------------------------------------------------------------- montage
 def montage():
     files = sorted([f for f in os.listdir(ART) if f.endswith(".png")])
@@ -930,7 +980,6 @@ if __name__ == "__main__":
     particle_spark(); particle_star(); particle_dot()
     particle_ring(); particle_coin(); particle_gem()
     atm_vignette(); atm_grid(); atm_aurora(); atm_sun()
-    app_icon()
-    app_icon_adaptive()
+    app_icon_from_logo()
     montage()
     print("DONE ->", ART)
