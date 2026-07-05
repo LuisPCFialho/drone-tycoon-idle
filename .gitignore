@@ -18,3 +18,6 @@ gradle_build_log.txt
 # OS
 .DS_Store
 Thumbs.db
+
+tools/__pycache__/
+*.pyc
