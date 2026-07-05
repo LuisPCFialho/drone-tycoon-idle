@@ -36,7 +36,7 @@ var combo_window_bonus := 0.0   # +seconds on combo decay (gem shop, permanent)
 
 # --- transient ---
 var earn_boost_mult := 2.0
-var buy_mode := 10
+var buy_mode := -1   # default to "Máx" (max affordable) per player preference
 var pending_offline := 0.0
 var pending_offline_seconds := 0.0
 var vdrones: Array = []

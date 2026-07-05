@@ -1,5 +1,5 @@
 extends Control
-## Main scene — Drone Tycoon: Sky Fleet  v1.17.0
+## Main scene — Drone Tycoon: Sky Fleet  v1.18.0
 
 const NAV_H  := 132.0
 const TABS_H := 532.0
@@ -46,6 +46,7 @@ var _rows := {}
 var _talent_rows := {}
 var _gem_rows := {}
 var _skin_rows := {}
+var _section_lbls: Array = []   # section header labels, re-translated on locale change
 var _offer_card: PanelContainer = null
 var _offer_time_lbl: Label = null
 var _mode_btns := {}
@@ -116,8 +117,7 @@ func _ready() -> void:
 	_prev_gems = GameState.gems; _prev_infl = GameState.influence
 	_rebuild_city_list()
 	_switch_tab(0)
-	if Fx.reduce_motion or Fx.skip_boot:
-		Fx.skip_boot = false
+	if Fx.reduce_motion:
 		_post_boot(loaded)
 	else:
 		_boot_intro(loaded)
@@ -147,11 +147,18 @@ func _boot_intro(loaded: bool) -> void:
 	t1.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; box.add_child(t1)
 	var t2 := _lbl("SKY FLEET", 20, UITheme.CYAN)
 	t2.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; box.add_child(t2)
+	# Portrait-safe extents: on the very first frame the device can still report
+	# the pre-rotation (landscape) size, which used to fling the fly-through drone
+	# off-screen ("cut off"). Derive width/height from the axes so it's always
+	# interpreted as portrait regardless of that transient.
+	var pw := minf(vs.x, vs.y)
+	var ph := maxf(vs.x, vs.y)
 	var dr := TextureRect.new(); dr.texture = _opt_tex("drone_blue")
 	dr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	dr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	dr.size = Vector2(96, 96)
-	dr.position = Vector2(-120, vs.y * 0.40)
+	dr.pivot_offset = Vector2(48, 48)
+	dr.position = Vector2(-120, ph * 0.42 - 48.0)
 	dr.rotation = 0.10
 	cover.add_child(dr)
 
@@ -163,7 +170,7 @@ func _boot_intro(loaded: bool) -> void:
 		pill.scale = Vector2(0.8, 0.8)
 
 	var tw := create_tween()
-	tw.tween_property(dr, "position:x", vs.x + 140.0, 0.9).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tw.tween_property(dr, "position:x", pw + 140.0, 0.9).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	tw.tween_property(cover, "modulate:a", 0.0, 0.35)
 	tw.parallel().tween_property(_hud, "offset_top", 20.0, 0.45).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	tw.parallel().tween_property(_map, "zoom", 1.0, 0.6).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
@@ -513,6 +520,8 @@ func _section(text: String, color: Color, icon_name := "") -> Control:
 	# assignment, so translating the already-uppercased string would look up
 	# the wrong (uppercase) key in the CSV and silently miss.
 	var l := Label.new(); l.text = tr(text).to_upper()
+	l.set_meta("i18n", text)          # original key, re-uppercased on locale change
+	_section_lbls.append(l)
 	l.add_theme_font_size_override("font_size", 16); l.add_theme_font_override("font", UITheme.font("Bold"))
 	l.add_theme_color_override("font_color", color)
 	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL; h.add_child(l)
@@ -1615,13 +1624,22 @@ func _settings_toggle(text: String, pressed: bool, cb: Callable) -> Control:
 	)
 	return row
 
+## Switch language WITHOUT reloading the scene. reload_current_scene() from a UI
+## callback crashes natively on Android (render thread, mid-frame free). Godot
+## live-retranslates every Control whose text is a translation key on locale
+## change; the only labels that don't are the uppercased section headers, which
+## _notification(NOTIFICATION_TRANSLATION_CHANGED) re-applies below.
 func _set_language(l: String) -> void:
 	if Fx.locale == l:
-		return   # already explicitly on this language
+		return
 	Fx.set_locale(l)
 	SaveSystem.save_game()
-	Fx.skip_boot = true            # skip the branded intro on a language reload
-	get_tree().reload_current_scene()   # rebuild EVERY label fresh in the new locale
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_TRANSLATION_CHANGED:
+		for l: Label in _section_lbls:
+			if is_instance_valid(l):
+				l.text = tr(str(l.get_meta("i18n", ""))).to_upper()
 
 func _settings_stats_text() -> String:
 	return tr("Entregas: %s  ·  Ganhos: %s\nRendimento: %s/s  ·  Combo: %d\nDrones: %d  ·  Países: %d/%d  ·  Streak: %dd\nPrestige: %d  ·  Conquistas: %d/%d") % [
@@ -1691,7 +1709,7 @@ func _show_settings() -> void:
 	)
 	box.add_child(restore)
 
-	var ver := _lbl("Drone Tycoon: Sky Fleet · v1.17.0 · © 2026 LPCF", 15, UITheme.MUTED)
+	var ver := _lbl("Drone Tycoon: Sky Fleet · v1.18.0 · © 2026 LPCF", 15, UITheme.MUTED)
 	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	ver.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	box.add_child(ver)

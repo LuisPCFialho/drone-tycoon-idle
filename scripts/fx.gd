@@ -37,8 +37,7 @@ const MAX_PARTICLES := 8     # live CPUParticles2D emitters
 
 var reduce_motion := false
 var haptics := true
-var locale := ""   # "" = auto-detect from device on first launch, else "pt"/"en"
-var skip_boot := false   # transient: set before a scene reload to skip the intro
+var locale := ""   # "" = not explicitly chosen → defaults to English (see apply_locale)
 var _t := 0.0                # shared pulse_clock rhythm
 var _live_labels := 0
 var _live_particles := 0
@@ -526,9 +525,12 @@ func from_dict(d: Dictionary) -> void:
 ## launch (empty locale) — Portuguese-family locales stay untranslated
 ## (source strings already are PT), anything else switches to English.
 func apply_locale() -> void:
+	# Default language is ENGLISH. An empty locale means the player never picked
+	# one explicitly, so the game ships in English for the global audience;
+	# Portuguese is opt-in via the settings toggle (which pins locale = "pt").
 	var eff := locale
 	if eff == "":
-		eff = "en" if not OS.get_locale_language().begins_with("pt") else "pt"
+		eff = "en"
 	TranslationServer.set_locale(eff)
 
 func set_locale(l: String) -> void:

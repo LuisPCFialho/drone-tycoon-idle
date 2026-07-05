@@ -43,39 +43,43 @@ func _process(_delta: float) -> void:
 			_shot("shot_4b_shop_iap.png")
 			main.call("_switch_tab", 5)
 		280:
-			_shot("shot_5_missions.png")
+			_shot("shot_5_missions.png")   # nav bar: check Missions icon present
+			# switch language to EN in-place (no reload) and verify live retranslate
+			main.call("_set_language", "en")
+		300:
 			main.call("_switch_tab", 0)
-		295:
-			main.call("_show_settings")
+		315:
+			_shot("shot_5b_fleet_en.png")   # tabs must be English + no crash
+			main.call("_switch_tab", 5)
 		330:
+			_shot("shot_5c_missions_en.png")
+			main.call("_switch_tab", 0)
+			main.call("_set_language", "pt")   # back to PT for the rest
+		345:
+			main.call("_show_settings")
+		370:
 			_shot("shot_6_settings.png")
 			_close_overlays(main)
 			main.call("_switch_tab", 4)
-		345:
+		380:
 			var pg2: ScrollContainer = main.get("_pages")[4]
 			var vb2 := pg2.get_child(0)
 			pg2.scroll_vertical = int(vb2.size.y * 0.45)
-		440:
+		470:
 			# late shot: the tab's stagger-in fade (0.04s/row) needs ~1.8s to
 			# reveal mid-list rows, so shooting right after the scroll is blank
 			_shot("shot_7_shop_skins.png")
 			main.call("_switch_tab", 0)
 			var bonus: Node = main.get("_bonus")
 			bonus.set("_wait", 0.0)     # force golden bonus drone to spawn now
-		470:
+		500:
 			var bonus2: Node = main.get("_bonus")
 			bonus2.set("_t", 0.45)      # park it mid-screen for the shot
-		472:
+		502:
 			_shot("shot_8_bonus_drone.png")
 			(main.get("_bonus") as Node).call("_on_tapped")
-		505:
+		535:
 			_shot("shot_9_bonus_popup.png")
-			_close_overlays(main)
-			# force English to verify the toggle rebuilds every label in EN
-			Fx.set_locale("en")
-			main.call("_show_settings")
-		540:
-			_shot("shot_10_settings_en.png")
 			get_tree().quit()
 
 ## Frees any open CanvasLayer overlay (daily popup, toasts, offline popup...).

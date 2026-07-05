@@ -558,6 +558,14 @@ def gen_icons():
         circle(d, n*0.66, n*0.64, n*0.025, fill=WHITE+(255,))
     make_icon("ic_nav_shop.png", nav_shop)
 
+    def nav_missions(d, img, n):
+        # clipboard with a checkmark (task list)
+        rr(d, (n*0.28,n*0.24,n*0.72,n*0.82), n*0.06, outline=WHITE+(255,), width=int(n*0.04*SS))
+        rr(d, (n*0.42,n*0.15,n*0.58,n*0.28), n*0.03, fill=WHITE+(255,))
+        line(d,(n*0.37,n*0.55),(n*0.46,n*0.65),WHITE+(255,),n*0.05)
+        line(d,(n*0.46,n*0.65),(n*0.64,n*0.40),WHITE+(255,),n*0.05)
+    make_icon("ic_nav_missions.png", nav_missions)
+
     # ---- emoji-replacement utility icons ----
     def event(d, img, n):
         pts=[(n*0.56,n*0.1),(n*0.28,n*0.54),(n*0.46,n*0.54),(n*0.4,n*0.9),(n*0.72,n*0.44),(n*0.52,n*0.44)]

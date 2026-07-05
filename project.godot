@@ -5,13 +5,15 @@ config_version=5
 [application]
 
 config/name="Drone Tycoon: Sky Fleet"
-config/version="1.17.0"
+config/version="1.18.0"
 run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.6", "GL Compatibility")
 config/icon="res://appicon.png"
 boot_splash/show_image=false
 
 [autoload]
+
+
 
 
 
@@ -32,7 +34,7 @@ Contracts="*res://scripts/contracts.gd"
 
 [internationalization]
 
-locale/translations=PackedStringArray("res://translations/ui.en.translation")
+locale/translations=PackedStringArray("res://translations/ui.pt.translation", "res://translations/ui.en.translation")
 
 [editor_plugins]
 
