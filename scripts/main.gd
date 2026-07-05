@@ -1,5 +1,5 @@
 extends Control
-## Main scene — Drone Tycoon: Sky Fleet  v1.16.0
+## Main scene — Drone Tycoon: Sky Fleet  v1.17.0
 
 const NAV_H  := 132.0
 const TABS_H := 532.0
@@ -116,7 +116,8 @@ func _ready() -> void:
 	_prev_gems = GameState.gems; _prev_infl = GameState.influence
 	_rebuild_city_list()
 	_switch_tab(0)
-	if Fx.reduce_motion:
+	if Fx.reduce_motion or Fx.skip_boot:
+		Fx.skip_boot = false
 		_post_boot(loaded)
 	else:
 		_boot_intro(loaded)
@@ -315,10 +316,10 @@ func _build_adbar() -> void:
 			GameState.grant_cash_minutes(30); _disp_credits = GameState.credits
 			Fx.chip_pop(_credits_chip, UITheme.GOLD)
 			_toast("+30min de lucros!", UITheme.GREEN, "ic_cash"))))
-	_adbar.add_child(_ad_pill("ic_gems", "+60 Gemas",
+	_adbar.add_child(_ad_pill("ic_gems", "+20 Gemas",
 		func(): Ads.show_rewarded("gems", func():
-			GameState.grant_gems(60)
-			_toast("+60 Gemas!", UITheme.CYAN, "ic_gems"))))
+			GameState.grant_gems(20)
+			_toast("+20 Gemas!", UITheme.CYAN, "ic_gems"))))
 
 func _ad_pill(icon_name: String, text: String, cb: Callable) -> Button:
 	var b := Button.new(); b.text = ""
@@ -1279,29 +1280,31 @@ func _update_nav_dots() -> void:
 	_nav_dots[5].visible = mis
 
 func _effect(key: String) -> String:
+	# tr() at return so these embedded (%s) effect strings follow the active
+	# locale instead of staying Portuguese inside a translated template.
 	match key:
-		"speed":  return "+3%/nv velocidade"
-		"cargo":  return "+0.25/nv carga"
-		"value":  return "+4%/nv valor"
-		"routes": return "+2.5%/nv eficiência de rota"
+		"speed":  return tr("+3%/nv velocidade")
+		"cargo":  return tr("+0.25/nv carga")
+		"value":  return tr("+4%/nv valor")
+		"routes": return tr("+2.5%/nv eficiência de rota")
 	return ""
 
 ## Cumulative total bonus at the given level (vs. the flat per-level rate in
 ## _effect) — much more useful once a few levels are owned.
 func _effect_total(key: String, lvl: int) -> String:
 	match key:
-		"speed":  return "+%.0f%% total" % (3.0 * float(lvl))
-		"cargo":  return "+%.0f%% total" % (25.0 * float(lvl))
-		"value":  return "+%.0f%% total" % ((pow(1.04, float(lvl)) - 1.0) * 100.0)
-		"routes": return "+%.0f%% total" % (2.5 * float(lvl))
+		"speed":  return tr("+%.0f%% total") % (3.0 * float(lvl))
+		"cargo":  return tr("+%.0f%% total") % (25.0 * float(lvl))
+		"value":  return tr("+%.0f%% total") % ((pow(1.04, float(lvl)) - 1.0) * 100.0)
+		"routes": return tr("+%.0f%% total") % (2.5 * float(lvl))
 	return ""
 
 func _talent_effect_total(key: String, lvl: int) -> String:
 	match key:
-		"global": return "+%.0f%% lucros" % (6.0 * float(lvl))
-		"speed":  return "+%.0f%% velocidade" % (4.0 * float(lvl))
-		"value":  return "+%.0f%% valor" % (4.0 * float(lvl))
-		"hangar": return "-%.0f%% custo drones" % (2.0 * float(lvl))
+		"global": return tr("+%.0f%% lucros") % (6.0 * float(lvl))
+		"speed":  return tr("+%.0f%% velocidade") % (4.0 * float(lvl))
+		"value":  return tr("+%.0f%% valor") % (4.0 * float(lvl))
+		"hangar": return tr("-%.0f%% custo drones") % (2.0 * float(lvl))
 	return ""
 
 # ── Signal handlers ──────────────────────────────────────────────────────────────
@@ -1550,26 +1553,75 @@ func _show_prestige_confirm() -> void:
 	cancel.custom_minimum_size = Vector2(0, 62); cancel.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 	cancel.pressed.connect(func(): layer.queue_free()); box.add_child(cancel)
 
-## Upscale a CheckButton's toggle textures (default theme switch is tiny on phones).
-func _grow_toggle(cb: CheckButton, factor := 1.7) -> void:
-	var thm := ThemeDB.get_default_theme()
-	if thm == null: return
-	for n: String in ["checked", "unchecked", "checked_disabled", "unchecked_disabled"]:
-		if not thm.has_icon(n, "CheckButton"): continue
-		var ic := thm.get_icon(n, "CheckButton")
-		if ic == null: continue
-		var img := ic.get_image()
-		if img == null: continue
-		img.resize(int(img.get_width() * factor), int(img.get_height() * factor), Image.INTERPOLATE_LANCZOS)
-		cb.add_theme_icon_override(n, ImageTexture.create_from_image(img))
+## Big, unmistakable settings toggle: the whole row is tappable and shows a
+## large track+knob switch (green ON / grey OFF) that slides on change. Replaces
+## the tiny default CheckButton switch the user disliked. Signature unchanged:
+## (label, initial state, callback(on)).
+func _settings_toggle(text: String, pressed: bool, cb: Callable) -> Control:
+	var row := Button.new()
+	row.toggle_mode = true
+	row.button_pressed = pressed
+	row.custom_minimum_size = Vector2(0, 92)
+	var rowsb := UITheme.solid(UITheme.PANEL, 16)
+	row.add_theme_stylebox_override("normal",  rowsb)
+	row.add_theme_stylebox_override("hover",   rowsb)
+	row.add_theme_stylebox_override("pressed", rowsb)
+	row.add_theme_stylebox_override("focus",   StyleBoxEmpty.new())
 
-func _settings_toggle(text: String, pressed: bool, cb: Callable) -> CheckButton:
-	var t := CheckButton.new(); t.text = text
-	t.add_theme_font_size_override("font_size", 30); t.custom_minimum_size = Vector2(0, 96)
-	t.button_pressed = pressed
-	t.toggled.connect(cb)
-	_grow_toggle(t)
-	return t
+	var h := HBoxContainer.new()
+	h.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	h.offset_left = 20; h.offset_right = -20
+	h.add_theme_constant_override("separation", 12)
+	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(h)
+
+	var lbl := _lbl(text, 26, UITheme.INK)
+	lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	h.add_child(lbl)
+
+	var pill := Panel.new()
+	pill.custom_minimum_size = Vector2(104, 56)
+	pill.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	h.add_child(pill)
+	var knob := Panel.new()
+	knob.size = Vector2(46, 46)
+	knob.position = Vector2(52, 5) if pressed else Vector2(5, 5)
+	knob.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var kb := StyleBoxFlat.new(); kb.bg_color = Color.WHITE; kb.set_corner_radius_all(23)
+	knob.add_theme_stylebox_override("panel", kb)
+	pill.add_child(knob)
+
+	var paint_track := func(on: bool) -> void:
+		var track := StyleBoxFlat.new()
+		track.bg_color = UITheme.GREEN if on else UITheme.PANEL2
+		track.set_corner_radius_all(28)
+		pill.add_theme_stylebox_override("panel", track)
+	paint_track.call(pressed)
+
+	row.toggled.connect(func(on: bool) -> void:
+		paint_track.call(on)
+		if Fx.reduce_motion:
+			knob.position.x = 52.0 if on else 5.0
+		else:
+			var tw := knob.create_tween()
+			tw.tween_property(knob, "position:x", 52.0 if on else 5.0, 0.16) \
+				.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		Fx.press(row)
+		Audio.play("tap")
+		cb.call(on)
+	)
+	return row
+
+func _set_language(l: String) -> void:
+	if Fx.locale == l:
+		return   # already explicitly on this language
+	Fx.set_locale(l)
+	SaveSystem.save_game()
+	Fx.skip_boot = true            # skip the branded intro on a language reload
+	get_tree().reload_current_scene()   # rebuild EVERY label fresh in the new locale
 
 func _settings_stats_text() -> String:
 	return tr("Entregas: %s  ·  Ganhos: %s\nRendimento: %s/s  ·  Combo: %d\nDrones: %d  ·  Países: %d/%d  ·  Streak: %dd\nPrestige: %d  ·  Conquistas: %d/%d") % [
@@ -1606,8 +1658,8 @@ func _show_settings() -> void:
 		en_btn.add_theme_stylebox_override("normal", UITheme.seg(not is_pt))
 		en_btn.add_theme_stylebox_override("hover", UITheme.seg(not is_pt))
 	refresh_lang_btns.call()
-	pt_btn.pressed.connect(func(): eff_locale = "pt"; Fx.set_locale("pt"); SaveSystem.save_game(); Fx.press(pt_btn); refresh_lang_btns.call())
-	en_btn.pressed.connect(func(): eff_locale = "en"; Fx.set_locale("en"); SaveSystem.save_game(); Fx.press(en_btn); refresh_lang_btns.call())
+	pt_btn.pressed.connect(func(): Fx.press(pt_btn); _set_language("pt"))
+	en_btn.pressed.connect(func(): Fx.press(en_btn); _set_language("en"))
 	lang_row.add_child(pt_btn); lang_row.add_child(en_btn)
 
 	var rule := Panel.new(); rule.custom_minimum_size = Vector2(0, 2)
@@ -1639,7 +1691,7 @@ func _show_settings() -> void:
 	)
 	box.add_child(restore)
 
-	var ver := _lbl("Drone Tycoon: Sky Fleet · v1.16.0 · © 2026 LPCF", 15, UITheme.MUTED)
+	var ver := _lbl("Drone Tycoon: Sky Fleet · v1.17.0 · © 2026 LPCF", 15, UITheme.MUTED)
 	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	ver.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	box.add_child(ver)

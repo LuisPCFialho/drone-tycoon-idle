@@ -70,6 +70,12 @@ func _process(_delta: float) -> void:
 			(main.get("_bonus") as Node).call("_on_tapped")
 		505:
 			_shot("shot_9_bonus_popup.png")
+			_close_overlays(main)
+			# force English to verify the toggle rebuilds every label in EN
+			Fx.set_locale("en")
+			main.call("_show_settings")
+		540:
+			_shot("shot_10_settings_en.png")
 			get_tree().quit()
 
 ## Frees any open CanvasLayer overlay (daily popup, toasts, offline popup...).

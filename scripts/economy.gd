@@ -92,12 +92,15 @@ const DRONE_RATE := 1.175
 func pay_tier(i: int) -> float:
 	return pow(2.2, float(i))
 
-## Per-country COST scale — grows MUCH faster than payouts so every country needs
-## a substantially bigger fleet than the last (escalating, long progression;
-## you cannot rush to the USA — it takes many hours). Steepened in v1.6.3 so
-## advancing country is clearly harder.
+## Per-country COST scale — grows MUCH faster than payouts (pay_tier 2.2^i) so
+## every country needs a substantially bigger fleet than the last (escalating,
+## long progression; you cannot rush to the USA — it takes many hours).
+## v1.17.0: steepened 4.6→6.5 because expanding out of Portugal carried a huge
+## fleet + higher pay_tier that made the next country's cities trivially cheap.
+## Portugal (i=0 → 6.5^0 = 1) is UNAFFECTED; only post-Portugal costs rise,
+## widening the gap vs income so ad boosts (2×, free cash) become worth watching.
 func cost_tier(i: int) -> float:
-	return pow(4.6, float(i))
+	return pow(6.5, float(i))
 
 func upgrade_cost(key: String, level: int) -> float:
 	var u: Dictionary = UPGRADES[key]
@@ -107,10 +110,12 @@ func drone_cost(count: int) -> float:
 	return 20.0 * pow(DRONE_RATE, float(max(0, count - 1)))
 
 ## Cost to unlock the n-th delivery city in a country (n = number already active).
-## Steepened in v1.6.4: base ×4.7, per-city exponent raised so later cities
-## within a country require sustained grinding before expanding.
+## v1.17.0: per-city growth 2.8→3.15 and base 1500→2600 so cities keep pace with
+## the carried-over fleet; combined with the steeper cost_tier, opening cities in
+## a new country is a real credit sink (and a reason to watch earn-boost ads)
+## instead of being auto-affordable the moment you arrive.
 func city_unlock_cost(country_idx: int, n: int) -> float:
-	return 1500.0 * pow(2.8, float(n)) * cost_tier(country_idx)
+	return 2600.0 * pow(3.15, float(n)) * cost_tier(country_idx)
 
 ## Cost to expand to the next country (available once all cities are unlocked).
 ## Big upfront gate so jumping country is a real milestone, not a quick hop.

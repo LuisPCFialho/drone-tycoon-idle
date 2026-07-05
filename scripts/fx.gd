@@ -38,6 +38,7 @@ const MAX_PARTICLES := 8     # live CPUParticles2D emitters
 var reduce_motion := false
 var haptics := true
 var locale := ""   # "" = auto-detect from device on first launch, else "pt"/"en"
+var skip_boot := false   # transient: set before a scene reload to skip the intro
 var _t := 0.0                # shared pulse_clock rhythm
 var _live_labels := 0
 var _live_particles := 0

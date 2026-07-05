@@ -58,13 +58,19 @@ func _build_streams() -> void:
 	_streams["error"]       = _buzz(0.14, 0.18)
 	_streams["pad"]         = _pad(8.0)  # fallback if MP3s unavailable
 
-func _load_mp3(path: String) -> AudioStreamMP3:
-	var data := FileAccess.get_file_as_bytes(path)
-	if data.is_empty(): return null
-	var st := AudioStreamMP3.new()
-	st.data = data
-	st.loop = false
-	return st
+## Load an imported MP3 track. MUST use load() (not FileAccess) so it works in
+## exported builds: Godot strips the raw .mp3 source from the PCK and only ships
+## the imported resource, so FileAccess.get_file_as_bytes("res://…mp3") returns
+## empty on-device (the reason music was silent in the APK even though it played
+## in the editor). Looping is handled by the playlist (_on_music_finished), so
+## force loop off on the shared resource.
+func _load_mp3(path: String) -> AudioStream:
+	if not ResourceLoader.exists(path):
+		return null
+	var res: Resource = load(path)
+	if res is AudioStreamMP3:
+		(res as AudioStreamMP3).loop = false
+	return res as AudioStream
 
 func _build_music() -> void:
 	for path in MUSIC_FILES:
