@@ -796,41 +796,80 @@ def atm_sun(n=384):
     img.save(os.path.join(ART,"sun_glow.png"))
 
 # ---------------------------------------------------------------- app icon
-def app_icon(n=512):
+def _icon_bg_gradient(n, mask=None):
+    """Full-bleed diagonal SKY_D->CYAN gradient, optionally clipped to `mask`."""
     img = Image.new("RGBA", (n, n), (0, 0, 0, 0))
     base = Image.new("RGBA", (n, n)); bp=base.load()
     for y in range(n):
-        c=lerp(SKY,CYAN,y/(n-1));
-        for x in range(n): bp[x,y]=c+(255,)
-    mask = Image.new("L", (n, n), 0)
-    ImageDraw.Draw(mask).rounded_rectangle([0,0,n,n], radius=int(n*0.22), fill=255)
-    img.paste(base, (0, 0), mask)
-    # radial white glow center
+        row_t = y/(n-1)
+        for x in range(n):
+            t = min(1.0, 0.72*row_t + 0.28*(x/(n-1)))
+            c = lerp(SKY_D, CYAN, t)
+            bp[x,y]=c+(255,)
+    if mask is not None:
+        img.paste(base, (0, 0), mask)
+    else:
+        img.paste(base, (0, 0))
+    return img
+
+def _icon_hero_layer(n, drone_scale=0.5, dcy_frac=0.36, mask=None):
+    """Transparent RGBA layer: gold glow + stars + hero drone + package.
+    Shared by the legacy masked icon and the adaptive foreground layer so
+    both stay visually identical at different safe-zone scales."""
+    img = Image.new("RGBA", (n, n), (0, 0, 0, 0))
+    # warm gold glow behind the hero — reads as a "spotlight" on the mascot
     gl=Image.new("RGBA",(n,n),(0,0,0,0)); gp=gl.load()
-    cx=cy=n/2
     for y in range(n):
         for x in range(n):
-            t=math.hypot(x-cx,y-cy)/(n/2)
-            a=int(max(0,(1-t))**2.5*120)
-            gp[x,y]=WHITE+(a,)
+            t=math.hypot(x-n*0.5,y-n*dcy_frac*1.22)/(n*0.5)
+            a=int(max(0,(1-t))**2.2*135)
+            gp[x,y]=lighten(GOLD,0.25)+(a,)
     img.alpha_composite(gl)
-    # star dots
     d=ImageDraw.Draw(img)
-    for sx,sy,s in [(0.2,0.22,5),(0.8,0.3,4),(0.72,0.74,3)]:
+    for sx,sy,s in [(0.16,0.2,5),(0.84,0.26,4),(0.78,0.76,3),(0.14,0.78,3)]:
         d.ellipse([sx*n-s,sy*n-s,sx*n+s,sy*n+s],fill=WHITE+(220,))
-    # hero white drone (no navy shadow box) + gold package
-    drone("appdrone_tmp.png", INK, 96, shadow=False)
-    dr=Image.open(os.path.join(ART,"appdrone_tmp.png")).resize((int(n*0.6),int(n*0.6)),Image.LANCZOS)
-    # soft white halo behind hero drone
+    # hero drone rendered NATIVELY at icon scale (not upscaled from the 96px
+    # in-game sprite, which read soft/blurry once stretched to ~300px) with
+    # GOLD accents — bolder silhouette + on-brand with the Aurora Logistics
+    # gold/cyan palette, much higher contrast than the old all-blue icon.
+    drone_n = int(n*drone_scale)
+    tmp_name = "appdrone_tmp_%d.png" % drone_n
+    drone(tmp_name, GOLD, drone_n, shadow=False)
+    dr=Image.open(os.path.join(ART,tmp_name)).convert("RGBA")
+    os.remove(os.path.join(ART,tmp_name))
+    dr=dr.rotate(-6, resample=Image.BICUBIC, expand=True)
+    # center point (not top-left) drives placement so the rotated bbox growth
+    # never pushes the drone past the canvas/mask edges
+    dcx, dcy = n*0.5, n*dcy_frac
+    dx = int(dcx - dr.width*0.5)
+    dy = int(dcy - dr.height*0.5)
     halo=Image.new("RGBA",(n,n),(0,0,0,0))
-    ImageDraw.Draw(halo).ellipse([n*0.24,n*0.18,n*0.76,n*0.62],fill=WHITE+(70,))
+    ImageDraw.Draw(halo).ellipse([n*0.18,n*(dcy_frac-0.26),n*0.82,n*(dcy_frac+0.26)],fill=lighten(GOLD,0.2)+(90,))
     halo=halo.filter(ImageFilter.GaussianBlur(22))
-    halo.putalpha(Image.composite(halo.split()[3],Image.new("L",(n,n),0),mask))
+    if mask is not None:
+        halo.putalpha(Image.composite(halo.split()[3],Image.new("L",(n,n),0),mask))
     img.alpha_composite(halo)
-    img.alpha_composite(dr,(int(n*0.2),int(n*0.12)))
-    pk=package(save=False).resize((int(n*0.26),int(n*0.26)),Image.LANCZOS)
-    img.alpha_composite(pk,(int(n*0.37),int(n*0.62)))
+    img.alpha_composite(dr,(dx,dy))
+    # package overlaps the drone's belly, as if just released
+    pk=package(save=False).resize((int(n*drone_scale*0.56),int(n*drone_scale*0.56)),Image.LANCZOS)
+    pkx = int(dcx - pk.width*0.5)
+    pky = int(dcy + drone_n*0.30)
+    img.alpha_composite(pk,(pkx,pky))
+    return img
+
+def app_icon(n=512):
+    mask = Image.new("L", (n, n), 0)
+    ImageDraw.Draw(mask).rounded_rectangle([0,0,n,n], radius=int(n*0.22), fill=255)
+    img = _icon_bg_gradient(n, mask)
+    img.alpha_composite(_icon_hero_layer(n, drone_scale=0.5, dcy_frac=0.36, mask=mask))
+    # thin gold rim near the rounded-square border — premium "badge" edge
+    rim_img=Image.new("RGBA",(n,n),(0,0,0,0))
+    ImageDraw.Draw(rim_img).rounded_rectangle(
+        [n*0.025,n*0.025,n*0.975,n*0.975], radius=int(n*0.20),
+        outline=lighten(GOLD,0.1)+(160,), width=max(2,int(n*0.008)))
+    img.alpha_composite(rim_img)
     # inner vignette + bottom drop
+    cx=cy=n/2
     vg=Image.new("RGBA",(n,n),(0,0,0,0)); vp=vg.load()
     for y in range(n):
         for x in range(n):
@@ -840,7 +879,22 @@ def app_icon(n=512):
     vg.putalpha(Image.composite(vg.split()[3],Image.new("L",(n,n),0),mask))
     img.alpha_composite(vg)
     img.save(os.path.join(os.path.dirname(__file__),"..","appicon.png"))
-    os.remove(os.path.join(ART,"appdrone_tmp.png"))
+
+## Android adaptive icon: separate background (opaque, full-bleed) and
+## foreground (transparent, subject kept inside the safe zone) layers. Without
+## these, Godot's gradle template falls back to its own default mascot icon on
+## the home screen — regenerating appicon.png alone (used for the legacy/store
+## icon) never changes what actually shows up on a real device's launcher.
+def app_icon_adaptive(n=432):
+    root = os.path.join(os.path.dirname(__file__), "..")
+    bg = _icon_bg_gradient(n)
+    bg.convert("RGB").save(os.path.join(root, "appicon_bg.png"))
+    # foreground subject kept smaller/higher than the legacy icon: adaptive
+    # masks (circle/squircle/rounded-square) crop the outer ~33% of the 108dp
+    # canvas unpredictably across launchers, so keep the drone+package well
+    # inside that safe zone instead of matching the legacy icon's fuller scale.
+    fg = _icon_hero_layer(n, drone_scale=0.40, dcy_frac=0.42)
+    fg.save(os.path.join(root, "appicon_fg.png"))
 
 # ---------------------------------------------------------------- montage
 def montage():
@@ -877,5 +931,6 @@ if __name__ == "__main__":
     particle_ring(); particle_coin(); particle_gem()
     atm_vignette(); atm_grid(); atm_aurora(); atm_sun()
     app_icon()
+    app_icon_adaptive()
     montage()
     print("DONE ->", ART)

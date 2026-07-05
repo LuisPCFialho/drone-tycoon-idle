@@ -100,6 +100,14 @@ func buy_shop(id: String) -> bool:
 func has_shop(id: String) -> bool:
     return id in shop_owned
 
+## Full reset ("Reset Progress" in Settings) — Prestige tier/shop wiped.
+func reset() -> void:
+    count = 0
+    pgems = 0
+    total_pgems = 0
+    permanent_mult = 1.0
+    shop_owned = []
+
 func to_dict() -> Dictionary:
     return {
         "count": count, "pgems": pgems, "total": total_pgems,

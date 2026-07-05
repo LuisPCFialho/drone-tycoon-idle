@@ -328,9 +328,19 @@ func shimmer(control: Control, color := Color.WHITE, looped := false) -> void:
 		)
 		return
 
-	# looped: cadence every ~4s, lives until the clip is freed by the caller
+	# looped: cadence every ~4s, until `control` itself is freed. The loop
+	# callback used to call `run` unconditionally forever — if the caller's
+	# button was later freed (popup closed, tab rebuilt, offer purchased) the
+	# next tick still tried to read control.size on a dead object, logging
+	# "Lambda capture ... was freed" every ~4s for the rest of the run. Guard
+	# each tick and kill the loop the first time it finds its target gone.
 	var loop_tw := control.create_tween().set_loops()
-	loop_tw.tween_callback(run)
+	loop_tw.tween_callback(func() -> void:
+		if not is_instance_valid(control) or not is_instance_valid(clip):
+			loop_tw.kill()
+			return
+		run.call()
+	)
 	loop_tw.tween_interval(4.0)
 
 # ════════════════════════════════════════════════════════════════════════════

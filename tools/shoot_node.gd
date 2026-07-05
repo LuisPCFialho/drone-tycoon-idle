@@ -59,28 +59,71 @@ func _process(_delta: float) -> void:
 			main.call("_show_settings")
 		370:
 			_shot("shot_6_settings.png")
+		# Simulate REAL taps on the PT/EN buttons inside the still-open Settings
+		# popup — the reported bug was the highlight not moving after a tap
+		# (stale captured locale var), which only reproduces via the actual
+		# button callback, not by calling _set_language() directly.
+		375:
+			var en_btn := _find_button_by_text(_topmost_overlay(main), "EN")
+			if en_btn != null: en_btn.pressed.emit()
+		390:
+			_shot("shot_6b_settings_en.png")   # highlight must be on EN now
+		392:
+			var pt_btn := _find_button_by_text(_topmost_overlay(main), "PT")
+			if pt_btn != null: pt_btn.pressed.emit()
+		407:
+			_shot("shot_6c_settings_pt.png")   # highlight back on PT
+		# Reset Progress end-to-end via real button taps — this used to crash
+		# the app (reload_current_scene() mid-callback on Android).
+		410:
+			var reset_btn := _find_button_by_text(_topmost_overlay(main), "Repor progresso")
+			if reset_btn != null: reset_btn.pressed.emit()
+		425:
+			var confirm_btn := _find_button_by_text(_topmost_overlay(main), "SIM, APAGAR TUDO")
+			if confirm_btn != null: confirm_btn.pressed.emit()
+		440:
+			_shot("shot_6d_after_reset.png")   # must show Fleet, no crash, credits ~0
 			_close_overlays(main)
 			main.call("_switch_tab", 4)
-		380:
+		450:
 			var pg2: ScrollContainer = main.get("_pages")[4]
 			var vb2 := pg2.get_child(0)
 			pg2.scroll_vertical = int(vb2.size.y * 0.45)
-		470:
+		540:
 			# late shot: the tab's stagger-in fade (0.04s/row) needs ~1.8s to
 			# reveal mid-list rows, so shooting right after the scroll is blank
 			_shot("shot_7_shop_skins.png")
 			main.call("_switch_tab", 0)
 			var bonus: Node = main.get("_bonus")
 			bonus.set("_wait", 0.0)     # force golden bonus drone to spawn now
-		500:
+		570:
 			var bonus2: Node = main.get("_bonus")
 			bonus2.set("_t", 0.45)      # park it mid-screen for the shot
-		502:
+		572:
 			_shot("shot_8_bonus_drone.png")
 			(main.get("_bonus") as Node).call("_on_tapped")
-		535:
+		605:
 			_shot("shot_9_bonus_popup.png")
 			get_tree().quit()
+
+func _find_button_by_text(node: Node, text: String) -> Button:
+	if node == null:
+		return null
+	if node is Button and (node as Button).text == text:
+		return node
+	for c in node.get_children():
+		var r := _find_button_by_text(c, text)
+		if r != null:
+			return r
+	return null
+
+## Topmost open CanvasLayer overlay directly under main (last one added).
+func _topmost_overlay(main: Node) -> CanvasLayer:
+	var found: CanvasLayer = null
+	for c in main.get_children():
+		if c is CanvasLayer:
+			found = c
+	return found
 
 ## Frees any open CanvasLayer overlay (daily popup, toasts, offline popup...).
 ## Only ever called once boot intro has fully settled (see comment above).

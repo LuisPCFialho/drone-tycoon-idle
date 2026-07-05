@@ -1,5 +1,5 @@
 extends Control
-## Main scene — Drone Tycoon: Sky Fleet  v1.18.0
+## Main scene — Drone Tycoon: Sky Fleet  v1.19.0
 
 const NAV_H  := 132.0
 const TABS_H := 532.0
@@ -63,6 +63,8 @@ var _combo_lbl: Label
 var _city_prog_fill: Panel
 var _progress_lbl: Label
 var _city_list_box: VBoxContainer
+var _prestige_shop_box: VBoxContainer
+var _achieve_box: VBoxContainer
 var _prestige_btn: Button
 var _prestige_info_lbl: Label
 var _pgems_lbl: Label
@@ -131,12 +133,28 @@ func _post_boot(loaded: bool) -> void:
 
 ## First-launch ceremony: branded cover, drone fly-through, then UI cascade.
 func _boot_intro(loaded: bool) -> void:
-	var vs := get_viewport_rect().size
+	# The opaque cover goes up FIRST, using PRESET_FULL_RECT (no viewport-size
+	# math at all) so it hides the fully-built game instantly on frame 1 — even
+	# though we then wait a couple of frames before laying out the title/drone.
 	var layer := CanvasLayer.new(); layer.layer = 200
 	add_child(layer)
 	var cover := ColorRect.new(); cover.color = UITheme.BG0
 	cover.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	layer.add_child(cover)
+
+	# On some Android devices get_viewport_rect() still reports a stale
+	# pre-rotation/pre-stretch size on the very first _ready() frame (the
+	# portrait lock + canvas_items stretch transform hasn't settled yet). Any
+	# pixel math done against that stale size — the drone's fly-through path,
+	# in particular — ends up positioned for the wrong screen and renders
+	# "cut off" once the real transform kicks in a frame later, even though
+	# our fixed-size screenshot harness never reproduces it (its window never
+	# transitions). Waiting two frames guarantees the settled portrait geometry
+	# before anything here reads get_viewport_rect().
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var vs := get_viewport_rect().size
+
 	var box := VBoxContainer.new()
 	box.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -147,10 +165,8 @@ func _boot_intro(loaded: bool) -> void:
 	t1.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; box.add_child(t1)
 	var t2 := _lbl("SKY FLEET", 20, UITheme.CYAN)
 	t2.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; box.add_child(t2)
-	# Portrait-safe extents: on the very first frame the device can still report
-	# the pre-rotation (landscape) size, which used to fling the fly-through drone
-	# off-screen ("cut off"). Derive width/height from the axes so it's always
-	# interpreted as portrait regardless of that transient.
+	# Defensive: keep interpreting the larger axis as height even if some
+	# device still reports a landscape-shaped size at this point.
 	var pw := minf(vs.x, vs.y)
 	var ph := maxf(vs.x, vs.y)
 	var dr := TextureRect.new(); dr.texture = _opt_tex("drone_blue")
@@ -697,13 +713,39 @@ func _build_legado_tab() -> ScrollContainer:
 	_pgems_lbl.add_theme_font_override("font", UITheme.font("Bold")); pg_row.add_child(_pgems_lbl)
 
 	v.add_child(_section("Loja de Prestige", UITheme.PRESTIGE, "ic_prestige"))
-	for id: String in Prestige.SHOP_ORDER:
-		v.add_child(_make_prestige_shop_row(id))
+	_prestige_shop_box = VBoxContainer.new()
+	_prestige_shop_box.add_theme_constant_override("separation", 11)
+	v.add_child(_prestige_shop_box)
+	_rebuild_prestige_shop()
 
 	v.add_child(_section("Conquistas", UITheme.GOLD, "ic_achieve"))
-	for id: String in Achievements.DEFS:
-		v.add_child(_make_achievement_row(id))
+	_achieve_box = VBoxContainer.new()
+	_achieve_box.add_theme_constant_override("separation", 11)
+	v.add_child(_achieve_box)
+	_rebuild_achievements()
 	return r[0]
+
+## Rebuilds the Prestige Shop rows from scratch — used on tab build and after a
+## full progress reset (buy states can't just be toggled back, each row wires
+## its own one-shot "Obtido" callback state at construction time).
+func _rebuild_prestige_shop() -> void:
+	if _prestige_shop_box == null: return
+	for c in _prestige_shop_box.get_children():
+		c.queue_free()
+	for id: String in Prestige.SHOP_ORDER:
+		_prestige_shop_box.add_child(_make_prestige_shop_row(id))
+
+## Rebuilds the Achievements list from scratch — see _rebuild_prestige_shop.
+## Cards differ structurally by done/secret state at construction time (extra
+## checkmark icon, progress bar, or "???" secret text), so a reset needs a
+## fresh build rather than toggling an existing row's fields.
+func _rebuild_achievements() -> void:
+	if _achieve_box == null: return
+	for c in _achieve_box.get_children():
+		c.queue_free()
+	_achieve_cells.clear(); _achieve_prog_fills.clear(); _achieve_prog_lbls.clear()
+	for id: String in Achievements.DEFS:
+		_achieve_box.add_child(_make_achievement_row(id))
 
 func _make_prestige_shop_row(id: String) -> PanelContainer:
 	var item: Dictionary = Prestige.SHOP[id]
@@ -1640,6 +1682,11 @@ func _notification(what: int) -> void:
 		for l: Label in _section_lbls:
 			if is_instance_valid(l):
 				l.text = tr(str(l.get_meta("i18n", ""))).to_upper()
+		# Settings stats blurb otherwise only refreshes every 30 frames in
+		# _process — up to half a second of stale-language text right after
+		# tapping PT/EN, which is exactly the "still mixed" symptom reported.
+		if _settings_stats_lbl != null and is_instance_valid(_settings_stats_lbl):
+			_settings_stats_lbl.text = _settings_stats_text()
 
 func _settings_stats_text() -> String:
 	return tr("Entregas: %s  ·  Ganhos: %s\nRendimento: %s/s  ·  Combo: %d\nDrones: %d  ·  Países: %d/%d  ·  Streak: %dd\nPrestige: %d  ·  Conquistas: %d/%d") % [
@@ -1664,20 +1711,23 @@ func _show_settings() -> void:
 	box.add_child(lang_row)
 	var lang_lbl := _lbl("Idioma / Language", 22, UITheme.INK)
 	lang_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL; lang_row.add_child(lang_lbl)
-	var eff_locale := Fx.locale if Fx.locale != "" else TranslationServer.get_locale()
 	var pt_btn := Button.new(); pt_btn.text = "PT"; pt_btn.custom_minimum_size = Vector2(64, 56)
 	var en_btn := Button.new(); en_btn.text = "EN"; en_btn.custom_minimum_size = Vector2(64, 56)
 	pt_btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 	en_btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	# Reads TranslationServer directly (not a locally-captured copy) so the
+	# highlight reflects the CURRENT locale even after _set_language() changes
+	# it — the previous version froze `eff_locale` at popup-build time and
+	# never re-read it, so the highlight never moved after pressing PT/EN.
 	var refresh_lang_btns := func():
-		var is_pt := not eff_locale.begins_with("en")
+		var is_pt := TranslationServer.get_locale().begins_with("pt")
 		pt_btn.add_theme_stylebox_override("normal", UITheme.seg(is_pt))
 		pt_btn.add_theme_stylebox_override("hover", UITheme.seg(is_pt))
 		en_btn.add_theme_stylebox_override("normal", UITheme.seg(not is_pt))
 		en_btn.add_theme_stylebox_override("hover", UITheme.seg(not is_pt))
 	refresh_lang_btns.call()
-	pt_btn.pressed.connect(func(): Fx.press(pt_btn); _set_language("pt"))
-	en_btn.pressed.connect(func(): Fx.press(en_btn); _set_language("en"))
+	pt_btn.pressed.connect(func(): Fx.press(pt_btn); _set_language("pt"); refresh_lang_btns.call())
+	en_btn.pressed.connect(func(): Fx.press(en_btn); _set_language("en"); refresh_lang_btns.call())
 	lang_row.add_child(pt_btn); lang_row.add_child(en_btn)
 
 	var rule := Panel.new(); rule.custom_minimum_size = Vector2(0, 2)
@@ -1709,7 +1759,7 @@ func _show_settings() -> void:
 	)
 	box.add_child(restore)
 
-	var ver := _lbl("Drone Tycoon: Sky Fleet · v1.18.0 · © 2026 LPCF", 15, UITheme.MUTED)
+	var ver := _lbl("Drone Tycoon: Sky Fleet · v1.19.0 · © 2026 LPCF", 15, UITheme.MUTED)
 	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	ver.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	box.add_child(ver)
@@ -1737,11 +1787,42 @@ func _show_reset_confirm() -> void:
 	confirm.add_theme_font_size_override("font_size", 22); confirm.custom_minimum_size = Vector2(0, 66)
 	confirm.add_theme_stylebox_override("normal", UITheme.danger_btn())
 	confirm.add_theme_stylebox_override("focus",  StyleBoxEmpty.new())
-	confirm.pressed.connect(func(): SaveSystem.wipe(); get_tree().reload_current_scene())
+	confirm.pressed.connect(func():
+		layer.queue_free()
+		_full_reset()
+	)
 	box.add_child(confirm)
 	var cancel := Button.new(); cancel.text = "Cancelar"; cancel.add_theme_font_size_override("font_size", 22)
 	cancel.custom_minimum_size = Vector2(0, 62); cancel.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 	cancel.pressed.connect(func(): layer.queue_free()); box.add_child(cancel)
+
+## Wipes progress WITHOUT reload_current_scene() — same native-crash-on-Android
+## reason as the language switch (see _set_language). Resets the gameplay
+## autoloads named in the confirm dialog (credits/drones/countries/prestige/
+## achievements) in place, then rebuilds the UI pieces that don't already
+## refresh every frame from that state.
+func _full_reset() -> void:
+	# The confirm dialog frees only ITS OWN layer — the Settings popup opened
+	# underneath it is a separate CanvasLayer and would otherwise be left
+	# floating on top of the freshly-reset game. Close every overlay so the
+	# player lands cleanly back on the main view, same as the old (crashing)
+	# reload_current_scene() effectively did by tearing down the whole scene.
+	for c in get_children():
+		if c is CanvasLayer:
+			c.queue_free()
+	GameState.reset()
+	Prestige.reset()
+	Achievements.reset()
+	SaveSystem.save_game()
+	_disp_credits = 0.0
+	_prev_gems = GameState.gems; _prev_infl = GameState.influence
+	_prev_combo_mult = 1.0
+	_income_milestone_idx = 0
+	_rebuild_city_list()
+	_rebuild_prestige_shop()
+	_rebuild_achievements()
+	_switch_tab(0)
+	_toast("Progresso reposto.", UITheme.RED, "ic_gear")
 
 func _show_offline_popup(amount: float, seconds: float) -> void:
 	var layer := _overlay(); var box := _popup_box(layer, UITheme.ACCENT)

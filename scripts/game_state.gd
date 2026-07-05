@@ -351,6 +351,12 @@ func collect_offline(multiplier: float) -> float:
 	Achievements.note_offline(amount)
 	return amount
 
+## Full reset ("Reset Progress" in Settings). from_dict({}) already resolves
+## every field to its declared default via d.get(key, default) — reuse it
+## instead of duplicating the defaults a second time.
+func reset() -> void:
+	from_dict({})
+
 # ---------------------------------------------------------------- persistence
 func to_dict() -> Dictionary:
 	return {

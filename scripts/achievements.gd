@@ -243,6 +243,11 @@ func progress(id: String) -> Vector2:
             return Vector2(float(Daily.streak if has_node("/root/Daily") else 0), 30.0)
     return Vector2.ZERO
 
+## Full reset ("Reset Progress" in Settings) — all unlocks/counters wiped.
+func reset() -> void:
+    unlocked_ids = []
+    counters = {"deliveries": 0, "cities_total": 0, "events_total": 0, "gems_spent": 0}
+
 func to_dict() -> Dictionary:
     return {"ids": unlocked_ids.duplicate(), "counters": counters.duplicate()}
 
