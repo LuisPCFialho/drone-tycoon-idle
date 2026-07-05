@@ -912,37 +912,42 @@ def app_icon_from_logo(n=512, an=432,
         return
     src = Image.open(src_path).convert("RGB")
     # the source has a ~1% near-black margin around its own rounded-icon
-    # render — crop it out so the legacy icon is a true full-bleed square
+    # render — crop it out so we work from the artwork's true bounds
     bbox = src.convert("L").point(lambda p: 255 if p > 14 else 0).getbbox()
     cropped = src.crop(bbox) if bbox else src
-    w, h = cropped.size
 
-    # --- legacy / Play Store icon: the artwork as provided, incl. wordmark
-    cropped.resize((n, n), Image.LANCZOS).save(os.path.join(root, "appicon.png"))
+    # --- legacy / Play Store icon: full artwork (incl. wordmark), INSET with
+    # real margin on a matching gradient backdrop. The first version pasted
+    # the source edge-to-edge — full-bleed art gets zoomed/cropped by launcher
+    # icon masking (and the Play Store's own rounding), which sliced off the
+    # wordmark and rotor tips entirely. 72% scale leaves a safe ~14% margin.
+    bg_legacy = _icon_bg_gradient(n).convert("RGB")
+    logo_scale = 0.72
+    logo = cropped.resize((int(n*logo_scale), int(n*logo_scale)), Image.LANCZOS)
+    bg_legacy.paste(logo, ((n-logo.width)//2, (n-logo.height)//2))
+    bg_legacy.save(os.path.join(root, "appicon.png"))
 
-    # --- adaptive background: the game's standard blue gradient (matches the
-    # artwork's own palette; a photographic background would fight the
-    # foreground once Android composites/parallaxes the two layers)
+    # --- adaptive background: the game's standard blue gradient
     _icon_bg_gradient(an).convert("RGB").save(os.path.join(root, "appicon_bg.png"))
 
-    # --- adaptive foreground: drone+package only (no wordmark — Android
-    # adaptive icons crop unpredictably per-launcher, and truncated text reads
-    # as broken), softly feathered so it blends into transparency rather than
-    # showing a hard photo-rectangle edge on the home screen.
-    x0, x1 = int(w*0.10), int(w*0.90)
-    y0, y1 = int(h*0.06), int(h*0.58)
-    hero = cropped.crop((x0, y0, x1, y1)).convert("RGBA")
-    hw, hh = hero.size
+    # --- adaptive foreground: the FULL artwork incl. wordmark, scaled to 60%
+    # (a square block that size stays fully inside the adaptive icon's worst-
+    # case circular safe zone with margin to spare — the earlier version
+    # scaled the drone-only crop to ~90%, which is why it read as "cut off on
+    # every edge" on a real device: launchers mask far more aggressively than
+    # a fixed preview window shows). Feathered rounded-rect edge so it blends
+    # into the background instead of showing a hard photo seam.
+    hero = cropped.convert("RGBA")
+    scale = 0.60
+    hw = hh = int(an*scale)
+    hero_r = hero.resize((hw, hh), Image.LANCZOS)
     mask = Image.new("L", (hw, hh), 0)
-    ImageDraw.Draw(mask).ellipse([hw*0.02, hh*0.02, hw*0.98, hh*0.98], fill=255)
-    mask = mask.filter(ImageFilter.GaussianBlur(hw*0.05))
-    hero.putalpha(mask)
+    ImageDraw.Draw(mask).rounded_rectangle(
+        [hw*0.03, hh*0.03, hw*0.97, hh*0.97], radius=int(hw*0.12), fill=255)
+    mask = mask.filter(ImageFilter.GaussianBlur(hw*0.02))
+    hero_r.putalpha(mask)
     canvas = Image.new("RGBA", (an, an), (0, 0, 0, 0))
-    scale = min((an*0.90)/hw, (an*0.82)/hh)
-    nw, nh = int(hw*scale), int(hh*scale)
-    hero_r = hero.resize((nw, nh), Image.LANCZOS)
-    cx = (an - nw)//2
-    cy = int(an*0.46 - nh*0.5)
+    cx = (an - hw)//2; cy = (an - hh)//2
     canvas.alpha_composite(hero_r, (cx, cy))
     canvas.save(os.path.join(root, "appicon_fg.png"))
 

@@ -1,5 +1,5 @@
 extends Control
-## Main scene — Drone Tycoon: Sky Fleet  v1.20.0
+## Main scene — Drone Tycoon: Sky Fleet  v1.21.0
 
 const NAV_H  := 132.0
 const TABS_H := 532.0
@@ -1382,6 +1382,7 @@ func _on_country_changed(i: int) -> void:
 			Fx.ring_pulse(self, c, UITheme.GOLD, 3.2)
 			Fx.ring_pulse(self, c, UITheme.CYAN, 2.6)
 		Audio.play("prestige")
+		Fx.vibrate(120)   # biggest milestone in the game — longest buzz
 	else:
 		_toast(tr("Bem-vindo a %s!") % Economy.country_name(i), UITheme.GOLD, "ic_city")
 		Fx.confetti(self, c, 48, [UITheme.GOLD, UITheme.CYAN, UITheme.GREEN, UITheme.PINK])
@@ -1390,6 +1391,7 @@ func _on_country_changed(i: int) -> void:
 		Fx.ring_pulse(self, c, UITheme.GOLD, 2.8)
 		Fx.ring_pulse(self, c, UITheme.CYAN, 2.2)
 		Audio.play("milestone")
+		Fx.vibrate(60)   # country expansion — stronger than a regular tap
 
 func _banana_rain() -> void:
 	var rng := RandomNumberGenerator.new(); rng.randomize()
@@ -1759,7 +1761,7 @@ func _show_settings() -> void:
 	)
 	box.add_child(restore)
 
-	var ver := _lbl("Drone Tycoon: Sky Fleet · v1.20.0 · © 2026 LPCF", 15, UITheme.MUTED)
+	var ver := _lbl("Drone Tycoon: Sky Fleet · v1.21.0 · © 2026 LPCF", 15, UITheme.MUTED)
 	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	ver.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	box.add_child(ver)

@@ -558,6 +558,11 @@ func _vibrate(ms: int) -> void:
 	if OS.has_feature("mobile"):
 		Input.vibrate_handheld(ms)
 
+## Public one-shot haptic pulse for callers outside Fx (e.g. main.gd's country
+## expansion celebration) — same guard/behavior as the internal helper above.
+func vibrate(ms: int) -> void:
+	_vibrate(ms)
+
 func _kind_to_file(kind: String) -> String:
 	match kind:
 		"star":  return "star.png"
