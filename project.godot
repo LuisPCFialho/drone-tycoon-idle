@@ -5,13 +5,14 @@ config_version=5
 [application]
 
 config/name="Drone Tycoon: Sky Fleet"
-config/version="1.21.0"
+config/version="1.22.0"
 run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.6", "GL Compatibility")
 config/icon="res://appicon.png"
 boot_splash/show_image=false
 
 [autoload]
+
 
 
 
@@ -53,6 +54,14 @@ window/size/viewport_height=1280
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 window/handheld/orientation=1
+
+[physics]
+
+# the game has zero RigidBody2D/CharacterBody2D/Area2D/StaticBody2D nodes and
+# never uses _physics_process — the default 60 physics ticks/sec were still
+# stepping and thread-syncing the (unused) physics server every frame on
+# Android for nothing. 1 is the minimum accepted value (0 is invalid).
+common/physics_ticks_per_second=1
 
 [rendering]
 

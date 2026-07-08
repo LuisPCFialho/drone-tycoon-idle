@@ -30,9 +30,14 @@ func _process(delta: float) -> void:
 		elif now >= int(s.get("deadline", 0)):
 			_replace(i)
 		elif str(s.get("type", "")) == "combo":
-			slots[i]["progress"] = maxf(float(s.get("progress", 0.0)), float(GameState.combo))
-			if float(slots[i]["progress"]) >= float(s.get("target", 1.0)):
-				slots[i]["ready"] = true
+			# only write when combo actually grew — was writing to the slot
+			# Dictionary + comparing floats every single frame (60/sec) for
+			# the mission's full lifetime (up to 1800s), even while combo sits
+			# at 0 between delivery bursts, unlike the throttled "drones" case
+			if GameState.combo > int(s.get("progress", 0.0)):
+				slots[i]["progress"] = float(GameState.combo)
+				if float(slots[i]["progress"]) >= float(s.get("target", 1.0)):
+					slots[i]["ready"] = true
 		elif _frame % 60 == 0 and str(s.get("type", "")) == "drones":
 			slots[i]["progress"] = float(GameState.drones)
 			if float(slots[i]["progress"]) >= float(s.get("target", 1.0)):
@@ -104,6 +109,22 @@ func _ensure_slots() -> void:
 	while slots.size() < SLOT_COUNT:
 		slots.append(_gen(slots.size()))
 
+## Rebuilds a slot's display label from its stored type/target/weekly data at
+## DISPLAY TIME rather than generation time. _gen() used to bake a translated
+## string once when the contract was rolled, so a mission generated in
+## Portuguese stayed in Portuguese even after switching the language toggle —
+## unlike every other piece of UI text, which Godot's engine auto-retranslates.
+func format_label(s: Dictionary) -> String:
+	var target: float = float(s.get("target", 0.0))
+	if bool(s.get("weekly", false)):
+		return tr("Desafio Semanal: entrega %d pacotes") % int(target)
+	match str(s.get("type", "")):
+		"deliveries": return tr("Entrega %d pacotes") % int(target)
+		"earn":       return tr("Ganha %s créditos") % Fmt.short(target)
+		"drones":     return tr("Tem %d drones na frota") % int(target)
+		"combo":      return tr("Atinge combo de %d entregas") % int(target)
+	return ""
+
 func _gen(slot_idx: int) -> Dictionary:
 	var now := int(Time.get_unix_time_from_system())
 	var ips := maxf(GameState.income_per_sec(), 0.5)
@@ -113,7 +134,6 @@ func _gen(slot_idx: int) -> Dictionary:
 		var wk_target := maxf(500.0, float(d_count) * 200.0)
 		return {
 			"type": "deliveries", "weekly": true,
-			"label": tr("Desafio Semanal: entrega %d pacotes") % int(wk_target),
 			"target": wk_target, "progress": 0.0, "earn_base": 0.0,
 			"deadline": now + 604800, "duration": 604800,
 			"reward_credits": ips * 7200.0,
@@ -131,7 +151,6 @@ func _gen(slot_idx: int) -> Dictionary:
 	var t: String = types[randi() % types.size()]
 
 	var target := 1.0
-	var label := ""
 	var dur := 600.0
 	var reward_credits := 0.0
 	var reward_gems := 0
@@ -140,13 +159,11 @@ func _gen(slot_idx: int) -> Dictionary:
 	match t:
 		"deliveries":
 			target = maxf(30.0, float(d_count) * 8.0 * diff)
-			label = tr("Entrega %d pacotes") % int(target)
 			dur = maxf(300.0, target * 3.0)
 			reward_credits = ips * minf(dur, 600.0) * 0.4 * diff
 			reward_gems = 1 if slot_idx >= 2 else 0
 		"earn":
 			target = ips * 120.0 * diff
-			label = tr("Ganha %s créditos") % Fmt.short(target)
 			dur = maxf(600.0, 240.0 * diff)
 			reward_credits = target * 0.35 * diff
 			reward_gems = 1 if slot_idx >= 2 else 0
@@ -154,26 +171,23 @@ func _gen(slot_idx: int) -> Dictionary:
 		"drones":
 			var need := int(float(d_count) * (1.3 + 0.2 * float(slot_idx)))
 			target = float(maxi(need, d_count + 5))
-			label = tr("Tem %d drones na frota") % int(target)
 			dur = 3600.0
 			reward_credits = ips * 180.0 * diff
 			reward_gems = 1
 		"combo":
 			target = float(15 + slot_idx * 15)
-			label = tr("Atinge combo de %d entregas") % int(target)
 			dur = 1800.0
 			reward_credits = ips * 240.0 * diff
 			reward_gems = 1 if slot_idx >= 2 else 0
 		_:
 			t = "earn"
 			target = 1000.0
-			label = tr("Ganha 1K créditos")
 			dur = 300.0
 			reward_credits = 400.0
 
 	dur = minf(dur, 5400.0)
 	return {
-		"type": t, "label": label, "target": target, "progress": 0.0,
+		"type": t, "target": target, "progress": 0.0,
 		"earn_base": earn_base, "deadline": now + int(dur), "duration": int(dur),
 		"reward_credits": reward_credits, "reward_gems": reward_gems,
 		"claimed": false, "ready": false,

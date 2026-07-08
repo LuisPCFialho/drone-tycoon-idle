@@ -95,7 +95,9 @@ func _process(_delta: float) -> void:
 			_shot("shot_7_shop_skins.png")
 			main.call("_switch_tab", 0)
 			var bonus: Node = main.get("_bonus")
-			bonus.set("_wait", 0.0)     # force golden bonus drone to spawn now
+			bonus.call("_spawn")   # force golden bonus drone to spawn now (idle wait is
+			                       # now a SceneTreeTimer, not a per-frame counter — poking
+			                       # _wait no longer has any effect, so call _spawn directly)
 		570:
 			var bonus2: Node = main.get("_bonus")
 			bonus2.set("_t", 0.45)      # park it mid-screen for the shot

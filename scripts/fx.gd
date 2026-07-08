@@ -34,6 +34,7 @@ const SPRING_OVERSHOOT := 1.06
 # ── Concurrency caps (mobile-safe) ────────────────────────────────────────────
 const MAX_LABELS    := 16
 const MAX_PARTICLES := 8     # live CPUParticles2D emitters
+const MAX_LIGHT_FX  := 60    # lightweight tweened Sprite2D/rect nodes (coin_fountain/confetti)
 
 var reduce_motion := false
 var haptics := true
@@ -41,6 +42,7 @@ var locale := ""   # "" = not explicitly chosen → defaults to English (see app
 var _t := 0.0                # shared pulse_clock rhythm
 var _live_labels := 0
 var _live_particles := 0
+var _live_light_fx := 0
 var _tex_cache := {}         # filename -> Texture2D (or null if missing)
 
 # ── Lifecycle ─────────────────────────────────────────────────────────────────
@@ -110,7 +112,8 @@ func floating_label(parent: Node, text: String, color: Color, at_pos: Vector2, s
 		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN).set_delay(dur * 0.35)
 	tw.chain().tween_callback(func() -> void:
 		_live_labels -= 1
-		lbl.queue_free()
+		if is_instance_valid(lbl):
+			lbl.queue_free()
 	)
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -170,7 +173,10 @@ func _dot_fallback(parent: Node, pos: Vector2, color: Color, n: int) -> void:
 			.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 		tw.tween_property(d, "modulate:a", 0.0, _scaled(0.55)) \
 			.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
-		tw.chain().tween_callback(d.queue_free)
+		tw.chain().tween_callback(func() -> void:
+			if is_instance_valid(d):
+				d.queue_free()
+		)
 
 # ════════════════════════════════════════════════════════════════════════════
 #  coin_fountain
@@ -179,11 +185,17 @@ func _dot_fallback(parent: Node, pos: Vector2, color: Color, n: int) -> void:
 func coin_fountain(parent: Node, from: Vector2, to: Vector2, count := 8) -> void:
 	if parent == null:
 		return
+	# a coin fountain represents a bigger reward moment than a routine tap
+	# (press() vibrates 12ms, error_shake 20ms) — this had zero haptic before
+	_vibrate(20)
 	var n: int = count
 	if reduce_motion:
 		n = int(max(3, count / 2))
 	var tex := _tex("coin.png")
 	for i in range(n):
+		if _live_light_fx >= MAX_LIGHT_FX:
+			break
+		_live_light_fx += 1
 		var node: Node2D
 		if tex != null:
 			var s := Sprite2D.new()
@@ -207,7 +219,11 @@ func coin_fountain(parent: Node, from: Vector2, to: Vector2, count := 8) -> void
 			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 		tw.parallel().tween_property(node, "scale", Vector2(0.4, 0.4), home) \
 			.set_delay(up * 0.3)
-		tw.tween_callback(node.queue_free)
+		tw.tween_callback(func() -> void:
+			_live_light_fx -= 1
+			if is_instance_valid(node):
+				node.queue_free()
+		)
 
 # ════════════════════════════════════════════════════════════════════════════
 #  confetti
@@ -225,6 +241,9 @@ func confetti(parent: Node, center: Vector2, count := 24, colors := []) -> void:
 	var star := _tex("star.png")
 	var dot := _tex("dot.png")
 	for i in range(n):
+		if _live_light_fx >= MAX_LIGHT_FX:
+			break
+		_live_light_fx += 1
 		var col: Color = cols[i % cols.size()]
 		var node: Node2D
 		var pick := randi() % 3
@@ -253,7 +272,11 @@ func confetti(parent: Node, center: Vector2, count := 24, colors := []) -> void:
 			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 		tw.parallel().tween_property(node, "modulate:a", 0.0, t_down) \
 			.set_ease(Tween.EASE_IN).set_delay(t_down * 0.3)
-		tw.chain().tween_callback(node.queue_free)
+		tw.chain().tween_callback(func() -> void:
+			_live_light_fx -= 1
+			if is_instance_valid(node):
+				node.queue_free()
+		)
 
 # ════════════════════════════════════════════════════════════════════════════
 #  ring_pulse
@@ -282,8 +305,11 @@ func ring_pulse(parent: Node, pos: Vector2, color: Color, max_scale := 2.0) -> v
 	tw.tween_property(node, "scale", Vector2(max_scale, max_scale), dur) \
 		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	tw.tween_property(node, "modulate:a", 0.0, dur) \
-		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	tw.chain().tween_callback(node.queue_free)
+		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
+	tw.chain().tween_callback(func() -> void:
+		if is_instance_valid(node):
+			node.queue_free()
+	)
 
 # ════════════════════════════════════════════════════════════════════════════
 #  shimmer
@@ -338,6 +364,11 @@ func shimmer(control: Control, color := Color.WHITE, looped := false) -> void:
 	loop_tw.tween_callback(func() -> void:
 		if not is_instance_valid(control) or not is_instance_valid(clip):
 			loop_tw.kill()
+			return
+		# skip (not kill) while hidden — e.g. the Founder Offer card stays in
+		# the tree with visible=false once purchased/hidden, so the loop was
+		# still ticking a sweep animation on an invisible control forever
+		if not control.is_visible_in_tree():
 			return
 		run.call()
 	)

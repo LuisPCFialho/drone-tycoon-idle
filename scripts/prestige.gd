@@ -85,6 +85,11 @@ func _soft_reset() -> void:
     if "speed_5" in shop_owned: gs.levels["speed"] = 5
     if "cargo_5" in shop_owned: gs.levels["cargo"] = 5
     if "value_5" in shop_owned: gs.levels["value"] = 5
+    # "vip_24h" ("Prévia VIP") was purchasable but did nothing — nothing ever
+    # read shop_owned for it. Grants a real 24h VIP window (2x profits +
+    # extended offline cap, same as GameState.is_vip_active()) after each prestige.
+    if "vip_24h" in shop_owned:
+        gs.vip_temp_until = int(Time.get_unix_time_from_system()) + 86400
     gs._rebuild_drones()
 
 func buy_shop(id: String) -> bool:

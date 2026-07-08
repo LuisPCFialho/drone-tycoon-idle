@@ -5,56 +5,56 @@ signal unlocked(id: String)
 
 const DEFS := {
     # Deliveries
-    "first_delivery":  {"name": "Primeira Entrega",      "desc": "Completa a primeira entrega.",              "icon": "🚁", "gems": 5,   "cat": "frota"},
-    "deliveries_100":  {"name": "Cem Entregas",           "desc": "Completa 100 entregas.",                    "icon": "📦", "gems": 10,  "cat": "frota"},
-    "deliveries_1k":   {"name": "Mil Entregas",           "desc": "Completa 1 000 entregas.",                  "icon": "📦", "gems": 25,  "cat": "frota"},
-    "deliveries_10k":  {"name": "Dez Mil Entregas",       "desc": "Completa 10 000 entregas.",                 "icon": "🏆", "gems": 75,  "cat": "frota"},
+    "first_delivery":  {"name": "Primeira Entrega",      "desc": "Completa a primeira entrega.",              "icon": "🚁", "cat": "frota"},
+    "deliveries_100":  {"name": "Cem Entregas",           "desc": "Completa 100 entregas.",                    "icon": "📦", "cat": "frota"},
+    "deliveries_1k":   {"name": "Mil Entregas",           "desc": "Completa 1 000 entregas.",                  "icon": "📦", "cat": "frota"},
+    "deliveries_10k":  {"name": "Dez Mil Entregas",       "desc": "Completa 10 000 entregas.",                 "icon": "🏆", "cat": "frota"},
     # Fleet
-    "drones_5":        {"name": "Pequena Frota",          "desc": "Tem 5 drones activos.",                     "icon": "🚁", "gems": 5,   "cat": "frota"},
-    "drones_25":       {"name": "Frota Sólida",           "desc": "Tem 25 drones activos.",                    "icon": "💪", "gems": 15,  "cat": "frota"},
-    "drones_100":      {"name": "Exército de Drones",     "desc": "Tem 100 drones activos.",                   "icon": "⚡", "gems": 40,  "cat": "frota"},
-    "drones_500":      {"name": "Força Aérea",            "desc": "Tem 500 drones activos.",                   "icon": "🌟", "gems": 100, "cat": "frota"},
-    "buy_100_once":    {"name": "Atacado",                "desc": "Compra 100 drones de uma vez.",             "icon": "🛒", "gems": 30,  "cat": "frota", "secret": true},
+    "drones_5":        {"name": "Pequena Frota",          "desc": "Tem 5 drones activos.",                     "icon": "🚁", "cat": "frota"},
+    "drones_25":       {"name": "Frota Sólida",           "desc": "Tem 25 drones activos.",                    "icon": "💪", "cat": "frota"},
+    "drones_100":      {"name": "Exército de Drones",     "desc": "Tem 100 drones activos.",                   "icon": "⚡", "cat": "frota"},
+    "drones_500":      {"name": "Força Aérea",            "desc": "Tem 500 drones activos.",                   "icon": "🌟", "cat": "frota"},
+    "buy_100_once":    {"name": "Atacado",                "desc": "Compra 100 drones de uma vez.",             "icon": "🛒", "cat": "frota", "secret": true},
     # Credits
-    "credits_1m":      {"name": "Milionário",             "desc": "Acumula 1 M de créditos.",                  "icon": "💰", "gems": 10,  "cat": "riqueza"},
-    "credits_1b":      {"name": "Bilionário",             "desc": "Acumula 1 B de créditos.",                  "icon": "💎", "gems": 30,  "cat": "riqueza"},
-    "credits_1t":      {"name": "Trilionário",            "desc": "Acumula 1 T de créditos.",                  "icon": "🌟", "gems": 80,  "cat": "riqueza"},
-    "earned_10b":      {"name": "Fluxo de Caixa",         "desc": "Ganha 10 B no total.",                      "icon": "📈", "gems": 50,  "cat": "riqueza"},
-    "earned_1t":       {"name": "Magnata",                "desc": "Ganha 1 T no total.",                       "icon": "🏆", "gems": 150, "cat": "riqueza"},
-    "income_1k":       {"name": "Rendimento Sólido",      "desc": "Atinge 1 000/s de receita.",                "icon": "📈", "gems": 15,  "cat": "riqueza"},
-    "income_1m":       {"name": "Máquina de Dinheiro",    "desc": "Atinge 1 M/s de receita.",                  "icon": "💹", "gems": 50,  "cat": "riqueza"},
+    "credits_1m":      {"name": "Milionário",             "desc": "Acumula 1 M de créditos.",                  "icon": "💰", "cat": "riqueza"},
+    "credits_1b":      {"name": "Bilionário",             "desc": "Acumula 1 B de créditos.",                  "icon": "💎", "cat": "riqueza"},
+    "credits_1t":      {"name": "Trilionário",            "desc": "Acumula 1 T de créditos.",                  "icon": "🌟", "cat": "riqueza"},
+    "earned_10b":      {"name": "Fluxo de Caixa",         "desc": "Ganha 10 B no total.",                      "icon": "📈", "cat": "riqueza"},
+    "earned_1t":       {"name": "Magnata",                "desc": "Ganha 1 T no total.",                       "icon": "🏆", "cat": "riqueza"},
+    "income_1k":       {"name": "Rendimento Sólido",      "desc": "Atinge 1 000/s de receita.",                "icon": "📈", "cat": "riqueza"},
+    "income_1m":       {"name": "Máquina de Dinheiro",    "desc": "Atinge 1 M/s de receita.",                  "icon": "💹", "cat": "riqueza"},
     # Countries / Cities
-    "country_2":       {"name": "Expansão Global",        "desc": "Expande para o 2.º país.",                  "icon": "🌍", "gems": 15,  "cat": "mundo"},
-    "country_5":       {"name": "Continente",             "desc": "Expande para 5 países.",                    "icon": "🌍", "gems": 40,  "cat": "mundo"},
-    "country_10":      {"name": "Dominação Mundial",      "desc": "Expande para 10 países.",                   "icon": "🌐", "gems": 100, "cat": "mundo"},
-    "cities_10":       {"name": "Urbanista",              "desc": "Desbloqueia 10 cidades no total.",          "icon": "🏙", "gems": 15,  "cat": "mundo"},
-    "cities_50":       {"name": "Megalópole",             "desc": "Desbloqueia 50 cidades no total.",          "icon": "🌆", "gems": 50,  "cat": "mundo"},
+    "country_2":       {"name": "Expansão Global",        "desc": "Expande para o 2.º país.",                  "icon": "🌍", "cat": "mundo"},
+    "country_5":       {"name": "Continente",             "desc": "Expande para 5 países.",                    "icon": "🌍", "cat": "mundo"},
+    "country_10":      {"name": "Dominação Mundial",      "desc": "Expande para 10 países.",                   "icon": "🌐", "cat": "mundo"},
+    "cities_10":       {"name": "Urbanista",              "desc": "Desbloqueia 10 cidades no total.",          "icon": "🏙", "cat": "mundo"},
+    "cities_50":       {"name": "Megalópole",             "desc": "Desbloqueia 50 cidades no total.",          "icon": "🌆", "cat": "mundo"},
     # Upgrades / Talents
-    "upgrade_25":      {"name": "Engenheiro",             "desc": "Chega ao nível 25 num upgrade.",            "icon": "⚙", "gems": 20,  "cat": "melhorias"},
-    "upgrade_100":     {"name": "Mestre Técnico",         "desc": "Chega ao nível 100 num upgrade.",           "icon": "🔧", "gems": 60,  "cat": "melhorias"},
-    "all_25":          {"name": "Frota Optimizada",       "desc": "Todos os upgrades ao nível 25+.",           "icon": "✨", "gems": 40,  "cat": "melhorias"},
-    "talent_10":       {"name": "Talentoso",              "desc": "Chega ao nível 10 num talento.",            "icon": "⭐", "gems": 15,  "cat": "melhorias"},
-    "influence_50":    {"name": "Influente",              "desc": "Acumula 50 de influência total.",           "icon": "🎯", "gems": 30,  "cat": "melhorias"},
-    "gem_boost_5":     {"name": "Obsessivo",              "desc": "Compra o Núcleo de Lucro 5 vezes.",         "icon": "💠", "gems": 50,  "cat": "melhorias", "secret": true},
+    "upgrade_25":      {"name": "Engenheiro",             "desc": "Chega ao nível 25 num upgrade.",            "icon": "⚙", "cat": "melhorias"},
+    "upgrade_100":     {"name": "Mestre Técnico",         "desc": "Chega ao nível 100 num upgrade.",           "icon": "🔧", "cat": "melhorias"},
+    "all_25":          {"name": "Frota Optimizada",       "desc": "Todos os upgrades ao nível 25+.",           "icon": "✨", "cat": "melhorias"},
+    "talent_10":       {"name": "Talentoso",              "desc": "Chega ao nível 10 num talento.",            "icon": "⭐", "cat": "melhorias"},
+    "influence_50":    {"name": "Influente",              "desc": "Acumula 50 de influência total.",           "icon": "🎯", "cat": "melhorias"},
+    "gem_boost_5":     {"name": "Obsessivo",              "desc": "Compra o Núcleo de Lucro 5 vezes.",         "icon": "💠", "cat": "melhorias", "secret": true},
     # Prestige
-    "prestige_1":      {"name": "Novo Começo",            "desc": "Faz prestige pela primeira vez.",           "icon": "🔄", "gems": 100, "cat": "legado"},
-    "prestige_3":      {"name": "Veterano",               "desc": "Faz prestige 3 vezes.",                     "icon": "💎", "gems": 200, "cat": "legado", "secret": true},
-    "prestige_5":      {"name": "Piloto Lendário",        "desc": "Faz prestige 5 vezes.",                     "icon": "🌟", "gems": 500, "cat": "legado", "secret": true},
+    "prestige_1":      {"name": "Novo Começo",            "desc": "Faz prestige pela primeira vez.",           "icon": "🔄", "cat": "legado"},
+    "prestige_3":      {"name": "Veterano",               "desc": "Faz prestige 3 vezes.",                     "icon": "💎", "cat": "legado", "secret": true},
+    "prestige_5":      {"name": "Piloto Lendário",        "desc": "Faz prestige 5 vezes.",                     "icon": "🌟", "cat": "legado", "secret": true},
     # Daily / Streak
-    "streak_7":        {"name": "Semana de Trabalho",     "desc": "Joga 7 dias consecutivos.",                 "icon": "📅", "gems": 50,  "cat": "legado"},
-    "streak_30":       {"name": "Mês Dedicado",           "desc": "Joga 30 dias consecutivos.",                "icon": "🗓", "gems": 200, "cat": "legado"},
-    "total_30":        {"name": "Piloto Fiel",            "desc": "Joga 30 dias no total.",                    "icon": "🎖", "gems": 75,  "cat": "legado"},
+    "streak_7":        {"name": "Semana de Trabalho",     "desc": "Joga 7 dias consecutivos.",                 "icon": "📅", "cat": "legado"},
+    "streak_30":       {"name": "Mês Dedicado",           "desc": "Joga 30 dias consecutivos.",                "icon": "🗓", "cat": "legado"},
+    "total_30":        {"name": "Piloto Fiel",            "desc": "Joga 30 dias no total.",                    "icon": "🎖", "cat": "legado"},
     # Events
-    "event_first":     {"name": "Hora de Ponta",          "desc": "Participa no primeiro evento.",             "icon": "⚡", "gems": 10,  "cat": "eventos"},
-    "event_5":         {"name": "Caçador de Eventos",     "desc": "Participa em 5 eventos.",                   "icon": "🎉", "gems": 30,  "cat": "eventos"},
-    "event_25":        {"name": "Mestre dos Eventos",     "desc": "Participa em 25 eventos.",                  "icon": "🎯", "gems": 75,  "cat": "eventos"},
+    "event_first":     {"name": "Hora de Ponta",          "desc": "Participa no primeiro evento.",             "icon": "⚡", "cat": "eventos"},
+    "event_5":         {"name": "Caçador de Eventos",     "desc": "Participa em 5 eventos.",                   "icon": "🎉", "cat": "eventos"},
+    "event_25":        {"name": "Mestre dos Eventos",     "desc": "Participa em 25 eventos.",                  "icon": "🎯", "cat": "eventos"},
     # Offline
-    "offline_big":     {"name": "Gestor Ausente",         "desc": "Recolhe mais de 1 M offline.",             "icon": "💤", "gems": 25,  "cat": "riqueza"},
+    "offline_big":     {"name": "Gestor Ausente",         "desc": "Recolhe mais de 1 M offline.",             "icon": "💤", "cat": "riqueza"},
     # Session
-    "session_30m":     {"name": "Dedicado",               "desc": "Joga 30 minutos numa sessão.",              "icon": "⏱", "gems": 20,  "cat": "legado"},
+    "session_30m":     {"name": "Dedicado",               "desc": "Joga 30 minutos numa sessão.",              "icon": "⏱", "cat": "legado"},
     # Gems
-    "gems_100":        {"name": "Coleccionador",          "desc": "Tens 100 gemas em simultâneo.",             "icon": "💎", "gems": 0,   "cat": "riqueza"},
-    "gems_spent_500":  {"name": "Investidor",             "desc": "Gasta 500 gemas no total.",                 "icon": "💠", "gems": 20,  "cat": "riqueza"},
+    "gems_100":        {"name": "Coleccionador",          "desc": "Tens 100 gemas em simultâneo.",             "icon": "💎", "cat": "riqueza"},
+    "gems_spent_500":  {"name": "Investidor",             "desc": "Gasta 500 gemas no total.",                 "icon": "💠", "cat": "riqueza"},
 }
 
 # Persisted
@@ -100,6 +100,15 @@ func _on_country(idx: int) -> void:
     check("country_5",  idx >= 4)
     check("country_10", idx >= 9)
 
+## Highest/lowest of the 4 upgrade levels — was independently recomputed as
+## an identical nested maxi()/mini() chain here AND (twice) in progress();
+## now a single shared helper.
+func _max_upgrade_level(gs: Node) -> int:
+    return maxi(int(gs.levels.get("speed", 0)), maxi(int(gs.levels.get("cargo", 0)), maxi(int(gs.levels.get("value", 0)), int(gs.levels.get("routes", 0)))))
+
+func _min_upgrade_level(gs: Node) -> int:
+    return mini(int(gs.levels.get("speed", 0)), mini(int(gs.levels.get("cargo", 0)), mini(int(gs.levels.get("value", 0)), int(gs.levels.get("routes", 0)))))
+
 ## Call after loading save to re-evaluate state-based achievements
 func check_all_state() -> void:
     if not has_node("/root/GameState"): return
@@ -113,11 +122,10 @@ func check_all_state() -> void:
     check("credits_1t",  gs.credits >= 1_000_000_000_000.0)
     check("earned_10b",  gs.total_earned >= 10_000_000_000.0)
     check("earned_1t",   gs.total_earned >= 1_000_000_000_000.0)
-    var max_lv: int = maxi(int(gs.levels.get("speed", 0)), maxi(int(gs.levels.get("cargo", 0)), maxi(int(gs.levels.get("value", 0)), int(gs.levels.get("routes", 0)))))
+    var max_lv: int = _max_upgrade_level(gs)
     check("upgrade_25",  max_lv >= 25)
     check("upgrade_100", max_lv >= 100)
-    var min_lv: int = mini(int(gs.levels.get("speed", 0)), mini(int(gs.levels.get("cargo", 0)), mini(int(gs.levels.get("value", 0)), int(gs.levels.get("routes", 0)))))
-    check("all_25",      min_lv >= 25)
+    check("all_25",      _min_upgrade_level(gs) >= 25)
     var max_tal: int = maxi(int(gs.talents.get("global", 0)), maxi(int(gs.talents.get("speed", 0)), maxi(int(gs.talents.get("value", 0)), int(gs.talents.get("hangar", 0)))))
     check("talent_10",   max_tal >= 10)
     check("influence_50", gs.influence_total >= 50)
@@ -225,15 +233,9 @@ func progress(id: String) -> Vector2:
         "prestige_1":      return Vector2(float(Prestige.count), 1.0)
         "prestige_3":      return Vector2(float(Prestige.count), 3.0)
         "prestige_5":      return Vector2(float(Prestige.count), 5.0)
-        "upgrade_25":
-            var ml := maxi(int(gs.levels.get("speed", 0)), maxi(int(gs.levels.get("cargo", 0)), maxi(int(gs.levels.get("value", 0)), int(gs.levels.get("routes", 0)))))
-            return Vector2(float(ml), 25.0)
-        "upgrade_100":
-            var ml := maxi(int(gs.levels.get("speed", 0)), maxi(int(gs.levels.get("cargo", 0)), maxi(int(gs.levels.get("value", 0)), int(gs.levels.get("routes", 0)))))
-            return Vector2(float(ml), 100.0)
-        "all_25":
-            var ml := mini(int(gs.levels.get("speed", 0)), mini(int(gs.levels.get("cargo", 0)), mini(int(gs.levels.get("value", 0)), int(gs.levels.get("routes", 0)))))
-            return Vector2(float(ml), 25.0)
+        "upgrade_25":      return Vector2(float(_max_upgrade_level(gs)), 25.0)
+        "upgrade_100":     return Vector2(float(_max_upgrade_level(gs)), 100.0)
+        "all_25":          return Vector2(float(_min_upgrade_level(gs)), 25.0)
         "talent_10":
             var mt := maxi(int(gs.talents.get("global", 0)), maxi(int(gs.talents.get("speed", 0)), maxi(int(gs.talents.get("value", 0)), int(gs.talents.get("hangar", 0)))))
             return Vector2(float(mt), 10.0)
@@ -241,6 +243,10 @@ func progress(id: String) -> Vector2:
             return Vector2(float(Daily.streak if has_node("/root/Daily") else 0), 7.0)
         "streak_30":
             return Vector2(float(Daily.streak if has_node("/root/Daily") else 0), 30.0)
+        "total_30":
+            # was missing entirely — "Piloto Fiel" silently showed no progress
+            # bar at all, unlike its sibling streak_7/streak_30 above
+            return Vector2(float(Daily.total_days if has_node("/root/Daily") else 0), 30.0)
     return Vector2.ZERO
 
 ## Full reset ("Reset Progress" in Settings) — all unlocks/counters wiped.

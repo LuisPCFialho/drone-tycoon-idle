@@ -3,19 +3,21 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://vx46vp6g3elc"
-path="res://.godot/imported/vignette.png-52fd42d00667487e2d4a4bc69be9752d.ctex"
+path.s3tc="res://.godot/imported/vignette.png-52fd42d00667487e2d4a4bc69be9752d.s3tc.ctex"
+path.etc2="res://.godot/imported/vignette.png-52fd42d00667487e2d4a4bc69be9752d.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/art/vignette.png"
-dest_files=["res://.godot/imported/vignette.png-52fd42d00667487e2d4a4bc69be9752d.ctex"]
+dest_files=["res://.godot/imported/vignette.png-52fd42d00667487e2d4a4bc69be9752d.s3tc.ctex", "res://.godot/imported/vignette.png-52fd42d00667487e2d4a4bc69be9752d.etc2.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0

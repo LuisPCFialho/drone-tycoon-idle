@@ -18,8 +18,6 @@ var sfx_vol   := 0.0
 var _streams := {}
 var _players: Array[AudioStreamPlayer] = []
 var _next      := 0
-var _last_sell := 0
-var _last_tick := 0
 var _ambient: AudioStreamPlayer
 var _music_tracks: Array = []
 var _music_idx: int = 0
@@ -45,10 +43,8 @@ func _ready() -> void:
 
 func _build_streams() -> void:
 	_streams["tap"]         = _click(0.020, 0.18)
-	_streams["tick"]        = _click(0.013, 0.13)
 	_streams["buy"]         = _sweep(440.0, 880.0, 0.15, 0.22)
 	_streams["whoosh"]      = _whoosh(0.30, 0.20)
-	_streams["sell"]        = _bell(1046.5, 0.22, 0.22)
 	_streams["unlock"]      = _arp([392.0, 493.88, 587.33, 783.99], 0.072, 0.24)
 	_streams["milestone"]   = _arp([261.63, 329.63, 392.00, 493.88, 523.25], 0.095, 0.26)
 	_streams["achieve"]     = _jingle([587.33, 698.46, 880.00, 1046.5], 0.080, 0.25)
@@ -111,11 +107,6 @@ func play(name: String, pitch := 1.0, vol_db := 0.0) -> void:
 	p.stream = _streams[name]; p.pitch_scale = clampf(pitch, 0.5, 2.0)
 	p.volume_db = vol_db + sfx_vol; p.play()
 
-func tick() -> void:
-	var now := Time.get_ticks_msec()
-	if now - _last_tick < 70: return
-	_last_tick = now; play("tick", randf_range(0.85, 1.20), -10.0)
-
 func set_music_vol(db: float) -> void:
 	music_vol = clampf(db, -40.0, 0.0)
 	if _ambient: _ambient.volume_db = muted_music_db()
@@ -155,18 +146,6 @@ func _click(dur: float, vol: float) -> AudioStreamWAV:
 		var raw := randf() * 2.0 - 1.0
 		prev = lerpf(prev, raw, 0.22)
 		data.encode_s16(i * 2, int(clampf(prev * env * vol, -1.0, 1.0) * 32767.0))
-	return _wav(data)
-
-## Bell tone — harmonic series with long sine decay (delivery / sell)
-func _bell(freq: float, dur: float, vol: float) -> AudioStreamWAV:
-	var n := int(dur * RATE)
-	var data := PackedByteArray(); data.resize(n * 2)
-	var atk := int(0.003 * RATE)
-	for i in range(n):
-		var t := float(i) / RATE
-		var env := _dec(i, n, atk, 1.4)
-		var s := (_sine(freq, t) * 0.70 + _sine(freq * 2.0, t) * 0.20 + _sine(freq * 2.756, t) * 0.10) * env * vol
-		data.encode_s16(i * 2, int(clampf(s, -1.0, 1.0) * 32767.0))
 	return _wav(data)
 
 ## Rising sine+triangle sweep — buy button

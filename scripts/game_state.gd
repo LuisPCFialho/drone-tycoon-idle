@@ -33,6 +33,7 @@ var earn_boost_timer := 0.0
 var total_earned := 0.0
 var total_deliveries := 0
 var combo_window_bonus := 0.0   # +seconds on combo decay (gem shop, permanent)
+var vip_temp_until := 0         # unix timestamp; Prestige Shop "vip_24h" grants a temporary VIP window
 
 # --- transient ---
 var earn_boost_mult := 2.0
@@ -56,8 +57,15 @@ func speed_factor() -> float:
 		+ 0.04 * float(talents["speed"])
 	return base * Events.current_spd_mult
 
+## True for a real (purchased) VIP pass OR an active Prestige Shop "vip_24h"
+## temporary window — the single source of truth other code should check
+## instead of Billing.vip directly (that was the bug: vip_24h set nothing
+## Billing.vip or this function ever read, so the purchase did nothing).
+func is_vip_active() -> bool:
+	return Billing.vip or vip_temp_until > int(Time.get_unix_time_from_system())
+
 func vip_mult() -> float:
-	return 2.0 if Billing.vip else 1.0
+	return 2.0 if is_vip_active() else 1.0
 
 func skin_collection_mult() -> float:
 	return 1.0 + 0.02 * float(max(0, skins_owned.size() - 1))
@@ -85,21 +93,32 @@ func cost_scale() -> float:
 
 func offline_cap() -> float:
 	var prestige_extra: float = OFFLINE_CAP_BASE * Prestige.extra_offline_pct()
-	return OFFLINE_CAP_BASE + prestige_extra + (79200.0 if Billing.vip else 0.0)
+	return OFFLINE_CAP_BASE + prestige_extra + (79200.0 if is_vip_active() else 0.0)
 
-func _route_dist(r: int) -> float:
-	var cities := Economy.country_cities(current_country)
-	var cap := Vector2(cities[0]["x"], cities[0]["y"])
-	var idx: int = clampi(1 + r, 1, cities.size() - 1)
-	var c := Vector2(cities[idx]["x"], cities[idx]["y"])
-	return max(0.06, cap.distance_to(c))
+## `cities` optional: pass the already-fetched array to avoid re-reading
+## Economy.country_cities() (a fresh Dictionary lookup) for every route/drone
+## in a loop where it's identical every iteration.
+func _route_dist(r: int, cities: Array = []) -> float:
+	var c: Array = cities if not cities.is_empty() else Economy.country_cities(current_country)
+	var cap := Vector2(c[0]["x"], c[0]["y"])
+	var idx: int = clampi(1 + r, 1, c.size() - 1)
+	var cc := Vector2(c[idx]["x"], c[idx]["y"])
+	return max(0.06, cap.distance_to(cc))
 
-## Credits for one delivery to a route (weak upgrade gains; scales with country tier).
-func per_delivery(dist: float) -> float:
+## Per-delivery multiplier that does NOT depend on route distance — only
+## (1.0 + dist) does, applied by the caller. Hoisted out of per_delivery()
+## so callers looping over many routes/drones (income_per_sec(), _process()
+## below) can compute this ONCE per frame instead of recomputing 2 pow()
+## calls + 4 multiplier lookups for every single one.
+func _delivery_const_mult() -> float:
 	var vf := (1.0 + 0.25 * float(levels["cargo"]) * Economy.milestone_mult(int(levels["cargo"]))) \
 		* pow(1.04, float(levels["value"])) * Economy.milestone_mult(int(levels["value"])) \
 		* (1.0 + 0.04 * float(talents["value"]))
-	return BASE_DELIV * vf * (1.0 + dist) * Economy.pay_tier(current_country) * global_mult() * route_mult()
+	return BASE_DELIV * vf * Economy.pay_tier(current_country) * global_mult() * route_mult()
+
+## Credits for one delivery to a route (weak upgrade gains; scales with country tier).
+func per_delivery(dist: float) -> float:
+	return _delivery_const_mult() * (1.0 + dist)
 
 func fleet_scale() -> float:
 	return float(drones) / float(max(1, vdrones.size()))
@@ -109,11 +128,16 @@ func income_per_sec() -> float:
 	var n := cities_unlocked
 	if n < 1:
 		return 0.0
+	# hoisted out of the loop: identical for every route, was previously
+	# recomputed (2 pow() calls + a fresh country_cities() lookup) per route
+	var sf := speed_factor()
+	var cities := Economy.country_cities(current_country)
+	var const_mult := _delivery_const_mult()
 	var s := 0.0
 	for r in range(n):
-		var d := _route_dist(r)
-		var tt := 2.0 * d / (BASE_SPEED * speed_factor())
-		s += per_delivery(d) / tt
+		var d := _route_dist(r, cities)
+		var tt := 2.0 * d / (BASE_SPEED * sf)
+		s += const_mult * (1.0 + d) / tt
 	return float(drones) * (s / float(n))
 
 func drone_cost() -> float:
@@ -139,9 +163,13 @@ func _process(delta: float) -> void:
 			combo = 0
 			_combo_decay_t = 0.0
 	var fs := fleet_scale()
+	# hoisted out of the per-drone loop: identical for every drone this frame
+	# (was recomputed up to MAX_VISUAL_DRONES=16 times/frame otherwise)
+	var sf := speed_factor()
+	var cities := Economy.country_cities(current_country)
 	for v in vdrones:
-		var d := _route_dist(int(v["route"]))
-		var rate := BASE_SPEED * speed_factor() / d
+		var d := _route_dist(int(v["route"]), cities)
+		var rate := BASE_SPEED * sf / d
 		v["t"] += rate * float(v["dir"]) * delta
 		if v["t"] >= 1.0:
 			v["t"] = 1.0; v["dir"] = -1
@@ -366,6 +394,7 @@ func to_dict() -> Dictionary:
 		"earn_boost_timer": earn_boost_timer, "total_earned": total_earned, "total_deliveries": total_deliveries,
 		"combo_window_bonus": combo_window_bonus,
 		"skins_owned": skins_owned.duplicate(), "skin_active": skin_active,
+		"vip_temp_until": vip_temp_until,
 	}
 
 func from_dict(d: Dictionary) -> void:
@@ -391,6 +420,7 @@ func from_dict(d: Dictionary) -> void:
 	total_earned = float(d.get("total_earned", 0.0))
 	total_deliveries = int(d.get("total_deliveries", 0))
 	combo_window_bonus = float(d.get("combo_window_bonus", 0.0))
+	vip_temp_until = int(d.get("vip_temp_until", 0))
 	skins_owned = ["classic"]
 	for s in Array(d.get("skins_owned", [])):
 		var sid: String = str(s)

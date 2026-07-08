@@ -29,6 +29,11 @@ var _hub_home: Texture2D
 var _hub_city: Texture2D
 var _hub_city2: Texture2D
 var _sea_tex: GradientTexture2D
+var _vig_top: GradientTexture2D
+var _vig_bottom: GradientTexture2D
+var _vig_left: GradientTexture2D
+var _vig_right: GradientTexture2D
+var _land_grad: GradientTexture2D
 var _grid_tile: Texture2D
 var _coin: Texture2D
 var _lock: Texture2D
@@ -37,7 +42,22 @@ var _aurora: Texture2D
 
 # --- projection fit + cinematic camera ---
 var _bbox := Rect2(0, 0, 1, 1)
+var _outline_cache: PackedVector2Array = PackedVector2Array()
 var _cam_tween: Tween
+
+# --- landmass geometry cache (rebuilt only when zoom/pan actually change) ---
+var _lm_zoom := -1.0
+var _lm_pan := Vector2(INF, INF)
+var _lm_pts: PackedVector2Array
+var _lm_sh: PackedVector2Array
+var _lm_closed: PackedVector2Array
+var _lm_inner: PackedVector2Array
+var _lm_grid_uvs: PackedVector2Array
+var _lm_land_uvs: PackedVector2Array
+
+# --- misc caches ---
+var _next_cost_str := ""
+var _text_width_cache: Dictionary = {}
 
 # --- transient state ---
 var _pops: Array = []                 # floating "+credits" labels
@@ -81,7 +101,7 @@ func _ready() -> void:
 	_aurora = load("res://assets/art/aurora_band.png")
 	texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED   # lets the holo grid tile
 	GameState.delivered.connect(_on_delivered)
-	GameState.country_changed.connect(func(_i): _recalc_bbox(); _reset_view(); reveal_country())
+	GameState.country_changed.connect(func(_i): _recalc_bbox(); _reset_view(); reveal_country(); _refresh_next_cost())
 	# cached sea gradient (replaces 40 draw_rect calls per frame)
 	var sg := Gradient.new()
 	sg.set_color(0, SEA_TOP); sg.set_color(1, SEA_BOT)
@@ -89,15 +109,66 @@ func _ready() -> void:
 	_sea_tex.gradient = sg
 	_sea_tex.fill_from = Vector2(0, 0); _sea_tex.fill_to = Vector2(0, 1)
 	_sea_tex.width = 4; _sea_tex.height = 256
+	# cached vignette edge-fade textures (replaces 32 draw_rect calls/frame)
+	_vig_top = _edge_gradient_tex(false)
+	_vig_bottom = _edge_gradient_tex(true)
+	_vig_left = _edge_gradient_tex(false, true)
+	_vig_right = _edge_gradient_tex(true, true)
+	# cached vertical land gradient (replaces a 2nd flat inner-shrink polygon)
+	var lg := Gradient.new()
+	lg.set_color(0, LAND_HI); lg.set_color(1, LAND)
+	_land_grad = GradientTexture2D.new()
+	_land_grad.gradient = lg
+	_land_grad.fill_from = Vector2(0, 0); _land_grad.fill_to = Vector2(0, 1)
+	_land_grad.width = 4; _land_grad.height = 128
 	_seed_ambiance()
 	_recalc_bbox()
+	GameState.city_unlocked.connect(func(_i): _refresh_next_cost())
+	_refresh_next_cost()
 	set_process(true)
+
+## Small cached alpha-fade texture for a screen edge vignette band. `reverse`
+## puts the opaque end at position 1 instead of 0 (bottom/right edges fade the
+## opposite direction from top/left). `horizontal` fades left<->right instead
+## of top<->bottom. Replaces the old per-frame 8-iteration x 4-rect loop.
+func _edge_gradient_tex(reverse: bool, horizontal := false) -> GradientTexture2D:
+	var g := Gradient.new()
+	var opaque := Color(VOID.r, VOID.g, VOID.b, 0.42)
+	var clear := Color(VOID.r, VOID.g, VOID.b, 0.0)
+	g.set_color(0, clear if reverse else opaque)
+	g.set_color(1, opaque if reverse else clear)
+	var tex := GradientTexture2D.new()
+	tex.gradient = g
+	if horizontal:
+		tex.fill_from = Vector2(0, 0); tex.fill_to = Vector2(1, 0)
+		tex.width = 64; tex.height = 8
+	else:
+		tex.fill_from = Vector2(0, 0); tex.fill_to = Vector2(0, 1)
+		tex.width = 8; tex.height = 64
+	return tex
+
+## Cached "next city" unlock cost string — recomputed only when it can
+## actually change (unlock/expand), not every frame from _draw_cities().
+func _refresh_next_cost() -> void:
+	var ci := GameState.current_country
+	_next_cost_str = Fmt.short(Economy.city_unlock_cost(ci, GameState.cities_unlocked))
+
+## Memoized text-width measurement (city/cost labels repeat every frame while
+## on screen but rarely change) — avoids re-measuring the same string+size.
+func _measure(text: String, font_size: int) -> float:
+	var key := text + "@" + str(font_size)
+	if _text_width_cache.has(key):
+		return _text_width_cache[key]
+	var w: float = _font.get_string_size(text, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size).x
+	_text_width_cache[key] = w
+	return w
 
 ## Bounding box of the current country's outline + cities (map space), so the
 ## projection fills the band instead of assuming the full unit square.
 func _recalc_bbox() -> void:
 	var ci := GameState.current_country
-	var pts := Economy.country_outline(ci)
+	_outline_cache = Economy.country_outline(ci)
+	var pts := _outline_cache
 	var cities := Economy.country_cities(ci)
 	if pts.is_empty() and cities.is_empty():
 		_bbox = Rect2(0, 0, 1, 1)
@@ -153,26 +224,31 @@ func _seed_ambiance() -> void:
 
 func _process(delta: float) -> void:
 	_t += delta
-	# advance floating pops
-	var keep: Array = []
-	for p in _pops:
-		p["life"] -= delta
-		p["y"] -= 34.0 * delta
-		if p["life"] > 0.0:
-			keep.append(p)
-	_pops = keep
+	# advance floating pops (mutate in place; skip entirely when idle — the
+	# common case outside the few seconds right after a delivery/unlock)
+	if not _pops.is_empty():
+		for i in range(_pops.size() - 1, -1, -1):
+			var p: Dictionary = _pops[i]
+			p["life"] = float(p["life"]) - delta
+			p["y"] = float(p["y"]) - 34.0 * delta
+			if float(p["life"]) <= 0.0:
+				_pops.remove_at(i)
 	# drift clouds (wrap)
 	for c in _clouds:
 		c["x"] += c["speed"] * delta
 		if c["x"] > 1.25:
 			c["x"] = -0.25
-	# decay delivery flashes
-	var fk: Dictionary = {}
-	for key: int in _flash:
-		var rem: float = float(_flash[key]) - delta
-		if rem > 0.0:
-			fk[key] = rem
-	_flash = fk
+	# decay delivery flashes (mutate in place; skip when nothing is flashing)
+	if not _flash.is_empty():
+		var expired: Array = []
+		for key: int in _flash:
+			var rem: float = float(_flash[key]) - delta
+			if rem > 0.0:
+				_flash[key] = rem
+			else:
+				expired.append(key)
+		for key in expired:
+			_flash.erase(key)
 	queue_redraw()
 
 func _band_ctr() -> Vector2:
@@ -297,23 +373,26 @@ func _draw() -> void:
 	_draw_horizon_light(w, h)
 	_draw_grid(w, h)
 	_draw_caustics(w, h)
-	_draw_clouds(w, h)
-	_draw_stars(w, h)
 
 	var ci := GameState.current_country
-	var outline := Economy.country_outline(ci)
-	_draw_landmass(outline)
+	_draw_landmass(_outline_cache)
 
 	var cities := Economy.country_cities(ci)
 	if cities.is_empty():
+		# clouds/stars drift ABOVE land/routes (below only the vignette), so
+		# the parallax depth cue reads instead of vanishing under the landmass
+		_draw_clouds(w, h)
+		_draw_stars(w, h)
 		_draw_vignette(w, h)
 		_draw_pops()
 		return
 
 	var cap := _proj(Vector2(cities[0]["x"], cities[0]["y"]))
-	_draw_routes(cap, cities)
-	_draw_drones(cap, cities)
+	var route_geom := _draw_routes(cap, cities)
+	_draw_drones(cap, cities, route_geom)
 	_draw_cities(cap, cities, ci)
+	_draw_clouds(w, h)
+	_draw_stars(w, h)
 	_draw_vignette(w, h)
 	_draw_pops()
 
@@ -335,19 +414,26 @@ func _draw_horizon_light(w: float, _h: float) -> void:
 		draw_texture_rect(_aurora, Rect2(-60.0 + drift, band_top, w + 120.0, 90.0), false, Color(1, 1, 1, 0.22))
 
 func _draw_grid(w: float, h: float) -> void:
-	# perspective dot/line grid converging toward a horizon near band_top
+	# perspective dot/line grid converging toward a horizon near band_top —
+	# batched into 2 draw_multiline() calls instead of 21 separate draw_line()
+	# calls, and the vertical line color is built once instead of per-segment.
 	var line := Color(0.165, 0.212, 0.329, 0.10)   # Hairline, low alpha
 	var horizon := band_top + h * 0.06
 	# horizontal lines compressing upward
+	var hpts := PackedVector2Array()
 	for i in range(1, 11):
 		var f := float(i) / 11.0
 		var y := horizon + (band_bottom - horizon) * (f * f)
-		draw_line(Vector2(0, y), Vector2(w, y), line, 1.0)
+		hpts.append(Vector2(0, y)); hpts.append(Vector2(w, y))
+	draw_multiline(hpts, line, 1.0)
 	# converging verticals toward a vanishing point
 	var vp := Vector2(w * 0.5, horizon)
+	var vline := Color(line.r, line.g, line.b, 0.07)
+	var vpts := PackedVector2Array()
 	for i in range(0, 11):
 		var bx := w * float(i) / 10.0
-		draw_line(Vector2(bx, band_bottom), vp.lerp(Vector2(bx, band_bottom), 0.18), Color(line.r, line.g, line.b, 0.07), 1.0)
+		vpts.append(Vector2(bx, band_bottom)); vpts.append(vp.lerp(Vector2(bx, band_bottom), 0.18))
+	draw_multiline(vpts, vline, 1.0)
 	# slow downward scanline band (live-console vibe)
 	var sweep := fmod(_t * 0.10, 1.0)
 	var sy := band_top + h * sweep
@@ -386,61 +472,69 @@ func _draw_stars(w: float, h: float) -> void:
 		draw_circle(Vector2(px, py), float(s["r"]), Color(CYAN.r, CYAN.g, CYAN.b, 0.18 * tw))
 
 func _draw_vignette(w: float, h: float) -> void:
-	# soft radial framing via stacked low-alpha edge rings (cheap, no texture)
-	var rect := Rect2(0, band_top, w, h)
-	# four soft edge gradients
-	var bands := 8
-	for i in range(bands):
-		var f := float(i) / float(bands)
-		var a := 0.07 * (1.0 - f)
-		var inset := f * 36.0
-		var col := Color(VOID.r, VOID.g, VOID.b, a)
-		# top
-		draw_rect(Rect2(rect.position.x, rect.position.y + inset, rect.size.x, 6.0), col)
-		# bottom
-		draw_rect(Rect2(rect.position.x, rect.position.y + rect.size.y - inset - 6.0, rect.size.x, 6.0), col)
-		# left
-		draw_rect(Rect2(rect.position.x + inset, rect.position.y, 6.0, rect.size.y), col)
-		# right
-		draw_rect(Rect2(rect.position.x + rect.size.x - inset - 6.0, rect.position.y, 6.0, rect.size.y), col)
+	# soft edge framing via 4 cached-gradient texture bands — was 8 iterations
+	# x 4 draw_rect() calls (32 draws) plus 8 Color allocations every frame.
+	var band := 42.0
+	draw_texture_rect(_vig_top, Rect2(0, band_top, w, band), false)
+	draw_texture_rect(_vig_bottom, Rect2(0, band_top + h - band, w, band), false)
+	draw_texture_rect(_vig_left, Rect2(0, band_top, band, h), false)
+	draw_texture_rect(_vig_right, Rect2(w - band, band_top, band, h), false)
 
 # ---------------------------------------------------------------- landmass
 
 func _draw_landmass(outline: PackedVector2Array) -> void:
 	if outline.size() < 3:
 		return
-	var pts := PackedVector2Array()
-	for p in outline:
-		pts.append(_proj(p))
+	# Geometry (projected points, shadow offset, closed outline, inner-light
+	# shrink, grid/gradient UVs) only actually changes when the camera moves
+	# (zoom/pan) or the outline itself changes — not while the player is just
+	# watching the map sit still, the common idle-game case. Rebuild only then.
+	if zoom != _lm_zoom or pan != _lm_pan or _lm_pts.size() != outline.size():
+		_lm_zoom = zoom; _lm_pan = pan
+		_lm_pts = PackedVector2Array()
+		for p in outline:
+			_lm_pts.append(_proj(p))
+		_lm_sh = PackedVector2Array()
+		for q in _lm_pts:
+			_lm_sh.append(q + Vector2(5, 9))
+		_lm_closed = _lm_pts.duplicate()
+		_lm_closed.append(_lm_pts[0])
+		var ctr := _centroid(_lm_pts)
+		_lm_inner = PackedVector2Array()
+		for q in _lm_pts:
+			_lm_inner.append(q.lerp(ctr, 0.10))
+		_lm_grid_uvs = PackedVector2Array()
+		for q in _lm_pts:
+			_lm_grid_uvs.append(q / 64.0)
+		# gradient UVs: v=0 at the landmass's screen-space top, v=1 at bottom,
+		# so the single cached vertical LAND_HI->LAND texture reads correctly
+		# regardless of zoom/pan (replaces a 2nd flat inner-shrink fill poly)
+		var min_y := INF; var max_y := -INF
+		for q in _lm_pts:
+			min_y = minf(min_y, q.y); max_y = maxf(max_y, q.y)
+		var yr := maxf(1.0, max_y - min_y)
+		_lm_land_uvs = PackedVector2Array()
+		for q in _lm_pts:
+			_lm_land_uvs.append(Vector2(0.5, (q.y - min_y) / yr))
+
+	var pts := _lm_pts
+	var closed := _lm_closed
 
 	# drop shadow: land visibly lifts off the sea
-	var sh := PackedVector2Array()
-	for q in pts:
-		sh.append(q + Vector2(5, 9))
-	draw_colored_polygon(sh, Color(SHADOW.r, SHADOW.g, SHADOW.b, 0.5))
+	draw_colored_polygon(_lm_sh, Color(SHADOW.r, SHADOW.g, SHADOW.b, 0.5))
 
 	# soft outer glow underlay (a few expanding faint strokes)
-	var closed := pts
-	closed.append(pts[0])
 	for g in range(4):
 		var gw := 18.0 - float(g) * 4.0
 		var ga := 0.05 + 0.03 * float(g)
 		draw_polyline(closed, Color(CYAN.r, CYAN.g, CYAN.b, ga), gw, true)
 
-	# filled land with a vertical gradient fake (two stacked polys via tint band)
-	draw_colored_polygon(pts, LAND)
-	# inner top-light: lighter polygon shrunk toward centroid
-	var ctr := _centroid(pts)
-	var inner := PackedVector2Array()
-	for q in pts:
-		inner.append(q.lerp(ctr, 0.10))
-	draw_colored_polygon(inner, Color(LAND_HI.r, LAND_HI.g, LAND_HI.b, 0.45))
+	# filled land: single smooth top-light gradient fill (was two flat-color
+	# polygons stacked to fake a gradient, leaving a hard ring-like inner edge)
+	draw_colored_polygon(pts, Color(1, 1, 1, 1), _lm_land_uvs, _land_grad)
 	# holo survey grid clipped to the landmass (repeat-tiled via uv > 1)
 	if _grid_tile != null:
-		var uvs := PackedVector2Array()
-		for q in pts:
-			uvs.append(q / 64.0)
-		draw_colored_polygon(pts, Color(CYAN.r, CYAN.g, CYAN.b, 0.06), uvs, _grid_tile)
+		draw_colored_polygon(pts, Color(CYAN.r, CYAN.g, CYAN.b, 0.06), _lm_grid_uvs, _grid_tile)
 
 	# animated holo coastline: wide soft glow + bright thin breathing rim
 	var glow := 0.5 + 0.5 * sin(_t * 1.5)
@@ -471,38 +565,58 @@ func _route_ctrl(a: Vector2, b: Vector2, r: int) -> Vector2:
 func _route_point(a: Vector2, ctrl: Vector2, b: Vector2, t: float) -> Vector2:
 	return a.lerp(ctrl, t).lerp(ctrl.lerp(b, t), t)
 
-func _draw_routes(cap: Vector2, cities: Array) -> void:
+## Draws route lanes and returns each route's {b, ctrl} geometry so
+## _draw_drones() doesn't redundantly recompute _proj()/_route_ctrl() per
+## drone for a value that's identical for every drone sharing the same route.
+func _draw_routes(cap: Vector2, cities: Array) -> Dictionary:
+	# tie the lane's core brightness to the same breathing pulse as the
+	# coastline rim — the flight lanes are more functionally important than
+	# the decorative outline but used to read visibly weaker (flat 0.45)
+	var glow := 0.5 + 0.5 * sin(_t * 1.5)
+	var route_geom: Dictionary = {}
 	for r in range(GameState.cities_unlocked):
 		var idx: int = 1 + r
 		if idx >= cities.size():
 			continue
 		var cp := _proj(Vector2(cities[idx]["x"], cities[idx]["y"]))
 		var ctrl := _route_ctrl(cap, cp, r)
+		route_geom[r] = {"b": cp, "ctrl": ctrl}
 		var pts := PackedVector2Array()
 		var segs := 14
 		for i in range(segs + 1):
 			pts.append(_route_point(cap, ctrl, cp, float(i) / float(segs)))
 		# wide soft glow lane + bright core, along the arc
 		draw_polyline(pts, Color(SKY.r, SKY.g, SKY.b, 0.10), 8.0, true)
-		draw_polyline(pts, Color(CYAN.r, CYAN.g, CYAN.b, 0.45), 2.0, true)
+		draw_polyline(pts, Color(CYAN.r, CYAN.g, CYAN.b, 0.55 + 0.30 * glow), 2.0, true)
 		# two traveling flow highlights per lane (busier logistics feel)
 		for k in range(2):
 			var phase := fmod(_t * 0.35 + float(r) * 0.27 + float(k) * 0.5, 1.0)
 			var flow := _route_point(cap, ctrl, cp, phase)
 			draw_circle(flow, 3.0, Color(1, 1, 1, 0.85))
 			draw_circle(flow, 6.0, Color(CYAN.r, CYAN.g, CYAN.b, 0.35))
+	return route_geom
 
 # ---------------------------------------------------------------- drones
 
-func _draw_drones(cap: Vector2, cities: Array) -> void:
+func _draw_drones(cap: Vector2, cities: Array, route_geom: Dictionary) -> void:
 	var skin: Dictionary = Economy.SKINS.get(GameState.skin_active, Economy.SKINS["classic"])
 	var body: Color = skin["body"]
+	var trail_col: Color = skin["trail"]
 	for di in range(GameState.vdrones.size()):
 		var v: Dictionary = GameState.vdrones[di]
 		var route: int = int(v["route"])
-		var rr: int = clampi(1 + route, 1, cities.size() - 1)
-		var b := _proj(Vector2(cities[rr]["x"], cities[rr]["y"]))
-		var ctrl := _route_ctrl(cap, b, route)
+		var b: Vector2
+		var ctrl: Vector2
+		if route_geom.has(route):
+			# every drone on the same route shares identical geometry —
+			# reuse what _draw_routes() already computed instead of rerunning
+			# _proj()/_route_ctrl() (2 sqrt calls) per drone
+			b = route_geom[route]["b"]
+			ctrl = route_geom[route]["ctrl"]
+		else:
+			var rr: int = clampi(1 + route, 1, cities.size() - 1)
+			b = _proj(Vector2(cities[rr]["x"], cities[rr]["y"]))
+			ctrl = _route_ctrl(cap, b, route)
 		var tval: float = float(v["t"])
 		var base := _route_point(cap, ctrl, b, tval)
 		# takeoff/landing ease: shrink + settle near pads instead of instant flips
@@ -519,17 +633,20 @@ func _draw_drones(cap: Vector2, cities: Array) -> void:
 		while hist.size() > TRAIL_LEN:
 			hist.remove_at(0)
 		_trails[di] = hist
-		_draw_trail(hist, di)
+		_draw_trail(hist, trail_col)
 
 		# soft ground shadow (offset down)
 		draw_circle(pos + Vector2(0, 14.0 * dsc), 12.0 * dsc, Color(SHADOW.r, SHADOW.g, SHADOW.b, 0.30))
 		# under-glow
 		draw_circle(pos, 16.0 * dsc, Color(SKY.r, SKY.g, SKY.b, 0.10))
 
-		# carried package on outbound leg (world-space: hangs below the drone)
+		# carried package on outbound leg (world-space: hangs below the drone),
+		# scaled by dsc so it shrinks/settles in sync with the drone near pads
+		# instead of staying full-size while the drone shrinks around it
 		if int(v["dir"]) == 1:
 			if _package != null:
-				draw_texture_rect(_package, Rect2(pos.x - 9, pos.y + 9, 18, 18), false)
+				var psz := 18.0 * dsc
+				draw_texture_rect(_package, Rect2(pos.x - psz * 0.5, pos.y + 9.0 * dsc, psz, psz), false)
 
 		# heading from bezier tangent so the drone faces its travel direction,
 		# with a light banking wobble
@@ -544,20 +661,18 @@ func _draw_drones(cap: Vector2, cities: Array) -> void:
 			draw_texture_rect(tex, Rect2(-20, -20, 40, 40), false, body)
 			draw_set_transform_matrix(Transform2D.IDENTITY)
 
-func _draw_trail(hist: Array, di: int) -> void:
+func _draw_trail(hist: Array, col: Color) -> void:
 	if hist.size() < 2:
 		return
-	var skin: Dictionary = Economy.SKINS.get(GameState.skin_active, Economy.SKINS["classic"])
-	var col: Color = skin["trail"]
 	for i in range(hist.size() - 1):
 		var f := float(i) / float(hist.size())
-		var a := 0.30 * f
+		var a := 0.5 * f   # was 0.30 — trails read weaker than the static coastline
 		var ww := 1.0 + 3.0 * f
 		draw_line(hist[i], hist[i + 1], Color(col.r, col.g, col.b, a), ww)
 
 # ---------------------------------------------------------------- cities
 
-func _draw_cities(cap: Vector2, cities: Array, ci: int) -> void:
+func _draw_cities(cap: Vector2, cities: Array, _ci: int) -> void:
 	for i in range(cities.size()):
 		var cp := _proj(Vector2(cities[i]["x"], cities[i]["y"]))
 		var nm: String = cities[i]["name"]
@@ -572,8 +687,7 @@ func _draw_cities(cap: Vector2, cities: Array, ci: int) -> void:
 			var is_next := (i == GameState.cities_unlocked + 1)
 			_locked_marker(cp, is_next)
 			if is_next:
-				var cost := Economy.city_unlock_cost(ci, GameState.cities_unlocked)
-				_cost_chip(cp, Fmt.short(cost))
+				_cost_chip(cp, _next_cost_str)
 
 func _capital_marker(p: Vector2, flash: float) -> void:
 	# hub_home texture if available, else procedural golden pad
@@ -626,15 +740,20 @@ func _locked_marker(p: Vector2, is_next: bool) -> void:
 		draw_circle(p, 2.4, Color(MUTED.r, MUTED.g, MUTED.b, 0.55))
 
 func _delivery_flash(p: Vector2, col: Color, t: float) -> void:
-	# expanding ring + rising light beam, t goes 0.5 -> 0
+	# expanding ring + rising light beam, t goes 0.5 -> 0, eased so the ring
+	# expands fast then decelerates instead of a flat constant-speed expansion
 	var f: float = clamp(t / 0.5, 0.0, 1.0)
-	var r := 14.0 + (1.0 - f) * 34.0
+	var ef := 1.0 - pow(f, 2.5)
+	var r := 14.0 + ef * 34.0
 	draw_arc(p, r, 0, TAU, 28, Color(col.r, col.g, col.b, f * 0.8), 2.5)
-	draw_line(p, p + Vector2(0, -46.0 * (1.0 - f) - 8.0), Color(col.r, col.g, col.b, f * 0.35), 3.0)
-	# parcel visibly dropping onto the pad (clocked by the same flash timer)
-	if _package != null and t > 0.2:
-		var drop := (0.5 - t) * 30.0
-		draw_texture_rect(_package, Rect2(p.x - 9.0, p.y - 26.0 + drop, 18, 18), false, Color(1, 1, 1, f))
+	draw_line(p, p + Vector2(0, -46.0 * ef - 8.0), Color(col.r, col.g, col.b, f * 0.35), 3.0)
+	# parcel visibly dropping onto the pad, with a smooth fade-in instead of a
+	# hard t>0.2 cutoff that used to pop the sprite in at ~40% alpha in one frame
+	if _package != null:
+		var pkg_fade := smoothstep(0.0, 0.2, t)
+		if pkg_fade > 0.0:
+			var drop := (0.5 - t) * 30.0
+			draw_texture_rect(_package, Rect2(p.x - 9.0, p.y - 26.0 + drop, 18, 18), false, Color(1, 1, 1, f * pkg_fade))
 
 # ---------------------------------------------------------------- labels
 
@@ -643,7 +762,7 @@ func _label(p: Vector2, text: String, col: Color) -> void:
 		return
 	var lw := 220.0
 	# frosted pill backing for legibility
-	var tw := _font.get_string_size(text, HORIZONTAL_ALIGNMENT_CENTER, -1, 16).x
+	var tw := _measure(text, 16)
 	var pill := Rect2(p.x - tw * 0.5 - 8.0, p.y + 22.0, tw + 16.0, 22.0)
 	draw_rect(pill, Color(MIDNIGHT.r, MIDNIGHT.g, MIDNIGHT.b, 0.55), true)
 	draw_rect(pill, Color(col.r, col.g, col.b, 0.25), false, 1.0)
@@ -654,7 +773,7 @@ func _cost_chip(p: Vector2, cost: String) -> void:
 		return
 	# lives ABOVE the marker (name pills live below) so lanes never collide
 	var lw := 200.0
-	var tw := _font.get_string_size(cost, HORIZONTAL_ALIGNMENT_CENTER, -1, 15).x
+	var tw := _measure(cost, 15)
 	var pill := Rect2(p.x - tw * 0.5 - 9.0 - 9.0, p.y - 44.0, tw + 18.0 + 18.0, 22.0)
 	draw_rect(pill, Color(MIDNIGHT.r, MIDNIGHT.g, MIDNIGHT.b, 0.62), true)
 	draw_rect(pill, Color(GOLD.r, GOLD.g, GOLD.b, 0.30), false, 1.0)

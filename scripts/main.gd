@@ -1,5 +1,5 @@
 extends Control
-## Main scene — Drone Tycoon: Sky Fleet  v1.21.0
+## Main scene — Drone Tycoon: Sky Fleet  v1.22.0
 
 const NAV_H  := 132.0
 const TABS_H := 532.0
@@ -40,6 +40,7 @@ var _disp_credits := 0.0
 var _prev_gems := 0
 var _prev_infl := 0
 var _prev_combo_mult := 1.0
+var _prev_buy_mode := -999
 
 # Tab widgets
 var _rows := {}
@@ -65,6 +66,7 @@ var _progress_lbl: Label
 var _city_list_box: VBoxContainer
 var _prestige_shop_box: VBoxContainer
 var _achieve_box: VBoxContainer
+var _prestige_shop_rows := {}
 var _prestige_btn: Button
 var _prestige_info_lbl: Label
 var _pgems_lbl: Label
@@ -86,6 +88,12 @@ var _mission_x2_btns: Array = []
 var _mission_reroll_btns: Array = []
 var _mission_gem_lbls: Array = []
 var _mission_gem_icons: Array = []
+# change-detection so _update_contracts() (called 4x/sec) only rebuilds a
+# slot's text/fills when its progress/ready/claimed actually moved, instead
+# of unconditionally re-shaping every label every call
+var _mission_last_progress: Array = [-1.0, -1.0, -1.0, -1.0]
+var _mission_last_ready: Array = [false, false, false, false]
+var _mission_last_claimed: Array = [false, false, false, false]
 
 # Income milestone celebration
 const INCOME_MILESTONES: Array = [1000.0, 10000.0, 100000.0, 1000000.0, 10000000.0, 100000000.0, 1000000000.0]
@@ -555,9 +563,13 @@ func _build_fleet_tab() -> ScrollContainer:
 		var mode_val: int = m[0]; var mode_lbl: String = m[1]
 		var b := Button.new(); b.text = mode_lbl; b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		b.custom_minimum_size = Vector2(0, 48); b.add_theme_font_size_override("font_size", 20)
-		b.add_theme_stylebox_override("normal",  UITheme.seg(false))
-		b.add_theme_stylebox_override("hover",   UITheme.seg(false))
-		b.add_theme_stylebox_override("pressed", UITheme.seg(true))
+		# cache both styleboxes once instead of allocating fresh ones every
+		# _process() frame regardless of whether buy_mode actually changed
+		b.set_meta("seg_off", UITheme.seg(false))
+		b.set_meta("seg_on", UITheme.seg(true))
+		b.add_theme_stylebox_override("normal",  b.get_meta("seg_off"))
+		b.add_theme_stylebox_override("hover",   b.get_meta("seg_off"))
+		b.add_theme_stylebox_override("pressed", b.get_meta("seg_on"))
 		b.add_theme_stylebox_override("focus",   StyleBoxEmpty.new())
 		b.pressed.connect(func(): GameState.buy_mode = mode_val; Fx.press(b))
 		seg_row.add_child(b); _mode_btns[mode_val] = b
@@ -732,6 +744,7 @@ func _rebuild_prestige_shop() -> void:
 	if _prestige_shop_box == null: return
 	for c in _prestige_shop_box.get_children():
 		c.queue_free()
+	_prestige_shop_rows.clear()
 	for id: String in Prestige.SHOP_ORDER:
 		_prestige_shop_box.add_child(_make_prestige_shop_row(id))
 
@@ -771,6 +784,7 @@ func _make_prestige_shop_row(id: String) -> PanelContainer:
 	if Prestige.has_shop(id):
 		pb.text = "Obtido"; pb.icon = _opt_tex("ic_check"); pb.disabled = true
 	ph.add_child(pb)
+	_prestige_shop_rows[id] = {"btn": pb, "cost": int(item["cost"])}
 	return pp
 
 func _make_achievement_row(id: String) -> PanelContainer:
@@ -834,6 +848,7 @@ func _build_shop_tab() -> ScrollContainer:
 	daily_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; daily_v.add_child(daily_info)
 	var daily_btn := _wide_btn(UITheme.GOLD.darkened(0.06))
 	daily_btn.text = "Abrir"
+	daily_btn.custom_minimum_size = Vector2(0, 68)
 	daily_btn.add_theme_color_override("font_color", Color(0.12, 0.08, 0.0))
 	daily_btn.pressed.connect(func():
 		Fx.press(daily_btn)
@@ -842,7 +857,7 @@ func _build_shop_tab() -> ScrollContainer:
 	)
 	daily_v.add_child(daily_btn)
 
-	v.add_child(_section("Compras com dinheiro real", UITheme.MUTED))
+	v.add_child(_section("Compras com dinheiro real", UITheme.MUTED, "ic_cash"))
 	for id: String in Billing.PRODUCT_ORDER:
 		v.add_child(_make_iap_row(id))
 	return r[0]
@@ -952,6 +967,7 @@ func _make_upgrade_row(key: String) -> PanelContainer:
 	var accent: Color = accent_map.get(key, UITheme.ACCENT)
 	var r := _row(accent, Economy.UPGRADES[key].get("icon", "ic_speed"))
 	r["title"].text = Economy.UPGRADES[key]["name"]
+	r["detail"].autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	var btn := _cbuy(UITheme.GREEN)
 	btn.pressed.connect(func():
 		if not _can_tap(): return
@@ -976,6 +992,7 @@ func _make_talent_row(key: String) -> PanelContainer:
 	var p: Dictionary = Economy.TALENTS[key]
 	var r := _row(UITheme.VIOLET, p.get("icon", "ic_prestige"))
 	r["title"].text = p["name"]
+	r["detail"].autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	var btn := _cbuy(UITheme.VIOLET.darkened(0.10), 120.0)
 	btn.icon = _opt_tex("ic_prestige"); btn.expand_icon = true
 	btn.add_theme_constant_override("icon_max_width", 20)
@@ -1099,7 +1116,7 @@ func _process(delta: float) -> void:
 	_credits_lbl.text = Fmt.short(_disp_credits)
 	_gems_lbl.text    = str(GameState.gems)
 	_infl_lbl.text    = (Prestige.tier_name() + " · " + str(GameState.influence)) if Prestige.count > 0 else str(GameState.influence)
-	_vip_badge.visible = Billing.vip
+	_vip_badge.visible = GameState.is_vip_active()
 	if _pgems_lbl != null and is_instance_valid(_pgems_lbl):
 		_pgems_lbl.text = str(Prestige.pgems)
 
@@ -1121,9 +1138,9 @@ func _process(delta: float) -> void:
 		_combo_chip.visible = false
 	_prev_combo_mult = cm
 
+	var country_nm := Economy.country_name(GameState.current_country)
 	_country_lbl.text = "%s · %d/%d" % [
-		Economy.country_name(GameState.current_country),
-		GameState.current_country + 1, Economy.num_countries()]
+		country_nm, GameState.current_country + 1, Economy.num_countries()]
 	_streak_lbl.text = "%dd" % Daily.streak
 	_streak_chip.modulate = UITheme.GOLD if Daily.streak >= 7 else Color.WHITE
 
@@ -1134,17 +1151,23 @@ func _process(delta: float) -> void:
 
 	# progress ribbon (HUD): % to next city or expand
 	_set_fill(_ribbon_fill, _unlock_progress())
-	# cities tab progress bar: strictly city unlock progress
-	var _cc := GameState.next_city_cost()
-	_set_fill(_city_prog_fill, clampf(GameState.credits / _cc, 0.0, 1.0) if _cc > 0.0 else 1.0)
+	# cities tab progress bar + the city button/detail block below both need
+	# this — computed once here instead of twice per frame (each call does
+	# two pow() calls internally)
+	var next_city_cost := GameState.next_city_cost()
+	_set_fill(_city_prog_fill, clampf(GameState.credits / next_city_cost, 0.0, 1.0) if next_city_cost > 0.0 else 1.0)
 
 	if Events.is_active():
 		_set_fill(_event_timer_bar, Events.time_pct())
 
-	for m in _mode_btns:
-		var active: bool = (GameState.buy_mode == int(m))
-		_mode_btns[m].add_theme_stylebox_override("normal", UITheme.seg(active))
-		_mode_btns[m].add_theme_stylebox_override("hover",  UITheme.seg(active))
+	if GameState.buy_mode != _prev_buy_mode:
+		for m in _mode_btns:
+			var seg_btn: Button = _mode_btns[m]
+			var active: bool = (GameState.buy_mode == int(m))
+			var sb: StyleBox = seg_btn.get_meta("seg_on") if active else seg_btn.get_meta("seg_off")
+			seg_btn.add_theme_stylebox_override("normal", sb)
+			seg_btn.add_theme_stylebox_override("hover",  sb)
+		_prev_buy_mode = GameState.buy_mode
 
 	var dc := GameState.drone_planned(); var dcost := GameState.drone_cost_multi(maxi(1, dc))
 	_drone_btn.text     = (("×%d   " % dc) if GameState.buy_mode != 1 else "") + Fmt.short(dcost)
@@ -1160,10 +1183,16 @@ func _process(delta: float) -> void:
 		btn.disabled = GameState.credits < cost
 		_afford(btn, not btn.disabled)
 		var ulvl := int(GameState.levels[key])
-		var mm := int(Economy.milestone_mult(ulvl))
-		var nxt := (ulvl / Economy.MILESTONE_STEP + 1) * Economy.MILESTONE_STEP
-		var mi: String = (tr("Marco ×%d · próx. Nv %d") % [mm, nxt]) if mm > 1 else (tr("Marco ×2 ao Nv %d") % nxt)
-		row["detail"].text = (tr("Nv %d · %s · %s") % [ulvl, _effect_total(key, ulvl), mi]) if ulvl > 0 else (tr("Nv 0 · %s · %s") % [_effect(key), mi])
+		# the detail string only actually changes when level/count/cost move,
+		# not every single frame — cache the last-rendered signature and skip
+		# the tr()+%-format rebuild when nothing it depends on has changed
+		var sig := [ulvl, count, cost]
+		if row.get("_sig") != sig:
+			row["_sig"] = sig
+			var mm := int(Economy.milestone_mult(ulvl))
+			var nxt := (ulvl / Economy.MILESTONE_STEP + 1) * Economy.MILESTONE_STEP
+			var mi: String = (tr("Marco ×%d · próx. Nv %d") % [mm, nxt]) if mm > 1 else (tr("Marco ×2 ao Nv %d") % nxt)
+			row["detail"].text = (tr("Nv %d · %s · %s") % [ulvl, _effect_total(key, ulvl), mi]) if ulvl > 0 else (tr("Nv 0 · %s · %s") % [_effect(key), mi])
 
 	for key: String in _talent_rows:
 		var tp: Dictionary = Economy.TALENTS[key]; var lvl := int(GameState.talents[key])
@@ -1176,8 +1205,12 @@ func _process(delta: float) -> void:
 		else:
 			tbtn.text = str(GameState.talent_cost(key)); tbtn.disabled = not GameState.can_buy_talent(key)
 		_afford(tbtn, not tbtn.disabled)
-		var tdesc: String = _talent_effect_total(key, lvl) if lvl > 0 else str(tp["desc"])
-		trow["detail"].text = tr("Nv %d/%d · %s") % [lvl, int(tp["max"]), tdesc]
+		# detail text only depends on lvl — skip the tr()+%-format rebuild on
+		# frames where the talent level hasn't actually changed
+		if trow.get("_lvl") != lvl:
+			trow["_lvl"] = lvl
+			var tdesc: String = _talent_effect_total(key, lvl) if lvl > 0 else str(tp["desc"])
+			trow["detail"].text = tr("Nv %d/%d · %s") % [lvl, int(tp["max"]), tdesc]
 
 	var gb: Dictionary = _gem_rows.get("boost", {})
 	if not gb.is_empty():
@@ -1190,6 +1223,17 @@ func _process(delta: float) -> void:
 			var c: int = int(Economy.GEM_SHOP[id]["cost"])
 			var gbtn: Button = gr["btn"]
 			gbtn.text = str(c); gbtn.disabled = GameState.gems < c; _afford(gbtn, not gbtn.disabled)
+	for pid: String in _prestige_shop_rows:
+		var prow: Dictionary = _prestige_shop_rows[pid]
+		var pbtn: Button = prow["btn"]
+		if not Prestige.has_shop(pid):
+			# this button dims via its own "disabled" stylebox override (set
+			# at construction) rather than the _afford()/_buy_btn() cached-
+			# meta pattern used by _cbuy()-based buttons — no _afford() call
+			# needed (calling it here crashed: this button never got the
+			# sb_n/sb_a meta _afford() expects).
+			pbtn.disabled = Prestige.pgems < int(prow["cost"])
+
 	var gct: Dictionary = _gem_rows.get("combo_time", {})
 	if not gct.is_empty():
 		var ct_btn: Button = gct["btn"]
@@ -1216,24 +1260,23 @@ func _process(delta: float) -> void:
 			_afford(sbtn, not sbtn.disabled)
 
 	if _offer_card != null:
-		var show_offer: bool = not Billing.starter_owned and not Billing.vip
+		var show_offer: bool = not Billing.starter_owned and not GameState.is_vip_active()
 		_offer_card.visible = show_offer
 		if show_offer and Engine.get_frames_drawn() % 30 == 0:
 			var now := Time.get_datetime_dict_from_system()
 			var left: int = (23 - int(now["hour"])) * 3600 + (59 - int(now["minute"])) * 60 + (60 - int(now["second"]))
 			_offer_time_lbl.text = tr("Termina em %d:%02d:%02d") % [left / 3600, (left % 3600) / 60, left % 60]
 
-	_progress_lbl.text = tr("%s — %d/%d cidades abertas.") % [Economy.country_name(GameState.current_country), GameState.cities_unlocked, GameState.max_cities()]
-	var cc := GameState.next_city_cost()
-	if cc < 0.0:
+	_progress_lbl.text = tr("%s — %d/%d cidades abertas.") % [country_nm, GameState.cities_unlocked, GameState.max_cities()]
+	if next_city_cost < 0.0:
 		_city_btn.disabled = true; _city_btn.text = tr("TODAS")
 		_city_detail.text = tr("Todas as cidades estão abertas.")
 	else:
-		_city_btn.text = Fmt.short(cc); _city_btn.disabled = GameState.credits < cc
+		_city_btn.text = Fmt.short(next_city_cost); _city_btn.disabled = GameState.credits < next_city_cost
 		var ci := GameState.current_country; var cities := Economy.country_cities(ci)
 		var nx: int = clampi(GameState.cities_unlocked + 1, 1, cities.size() - 1)
 		_city_detail.text = tr("Próxima: %s") % cities[nx]["name"]
-	_afford(_city_btn, not _city_btn.disabled and cc >= 0.0)
+	_afford(_city_btn, not _city_btn.disabled and next_city_cost >= 0.0)
 	var ec := GameState.expand_cost()
 	if ec < 0.0:
 		_expand_btn.disabled = true; _expand_btn.text = tr("FIM")
@@ -1246,18 +1289,28 @@ func _process(delta: float) -> void:
 		_expand_detail.text = tr("Seguinte: %s (+Influência)") % Economy.country_name(GameState.current_country + 1)
 	_afford(_expand_btn, not _expand_btn.disabled and ec >= 0.0 and GameState.all_cities_unlocked())
 
-	# prestige button
+	# prestige button — pgems_on_next_prestige() depends on current_country
+	# even while ready stays true, so the BUTTON text stays unconditional;
+	# but the INFO LABEL only actually changes when readiness flips (reaching
+	# country 5, or a prestige just reset it below that) — the same
+	# transition _prestige_ready_prev already detects for breathe() below —
+	# so gate its tr()+%-format rebuild on that instead of every frame.
+	# (`or _prestige_info_lbl.text == ""` forces the very first frame, since
+	# ready and _prestige_ready_prev both start false and would otherwise
+	# never differ before the player's first readiness transition.)
 	var ready := Prestige.can_prestige()
+	_prestige_btn.disabled = not ready
 	if ready:
 		_prestige_btn.text = "PRESTIGE  (+%d)" % Prestige.pgems_on_next_prestige()
-		_prestige_btn.disabled = false
-		_prestige_info_lbl.text = tr("Tier: %s · Prestige #%d · ×%.2f\nReinicias mantendo gemas e conquistas.") % [Prestige.tier_name(), Prestige.count + 1, Prestige.permanent_mult * 1.15]
 	else:
 		_prestige_btn.text = tr("Prestige (requer 5.º país)")
-		_prestige_btn.disabled = true
-		_prestige_info_lbl.text = tr("Chega ao 5.º país para fazer prestige.\nTier: %s · Prestige %d · ×%.2f") % [Prestige.tier_name(), Prestige.count, Prestige.permanent_mult]
-	if ready != _prestige_ready_prev:
-		Fx.breathe(_prestige_btn, ready)
+	if ready != _prestige_ready_prev or _prestige_info_lbl.text == "":
+		if ready:
+			_prestige_info_lbl.text = tr("Tier: %s · Prestige #%d · ×%.2f\nReinicias mantendo gemas e conquistas.") % [Prestige.tier_name(), Prestige.count + 1, Prestige.permanent_mult * 1.15]
+		else:
+			_prestige_info_lbl.text = tr("Chega ao 5.º país para fazer prestige.\nTier: %s · Prestige %d · ×%.2f") % [Prestige.tier_name(), Prestige.count, Prestige.permanent_mult]
+		if ready != _prestige_ready_prev:
+			Fx.breathe(_prestige_btn, ready)
 		_prestige_ready_prev = ready
 
 	_update_nav_dots()
@@ -1280,10 +1333,13 @@ func _process(delta: float) -> void:
 		Achievements.check("earned_1t",    GameState.total_earned >= 1_000_000_000_000.0)
 		Achievements.check("influence_50", GameState.influence_total >= 50)
 		Achievements.check("gems_100",     GameState.gems >= 100)
-		_check_income_milestones()
+		_check_income_milestones(ips)
 		for id: String in _achieve_prog_fills:
 			if Achievements.is_done(id): continue
-			var prog := Achievements.progress(id)
+			# income_1k/income_1m would otherwise call Achievements.progress(),
+			# which independently recomputes gs.income_per_sec() (an O(cities)
+			# loop with pow() calls) — reuse the `ips` already computed above
+			var prog := Vector2(ips, 1000.0) if id == "income_1k" else (Vector2(ips, 1_000_000.0) if id == "income_1m" else Achievements.progress(id))
 			if prog.y > 0.0:
 				_set_fill(_achieve_prog_fills[id] as Panel, clampf(prog.x / prog.y, 0.0, 1.0))
 				(_achieve_prog_lbls[id] as Label).text = "%s / %s" % [Fmt.short(prog.x), Fmt.short(prog.y)]
@@ -1485,7 +1541,12 @@ func _reward_fx(node: Control, color: Color, kind := "spark", n := 6) -> void:
 func _daily_compact(r: Dictionary) -> Array:
 	if r.has("hours"):     return ["ic_cash", "%dh" % int(r["hours"])]
 	if r.has("boost"):     return ["ic_boost", "2×"]
-	if r.has("pgems"):     return ["ic_prestige", "+%d" % int(r.get("gems", r["pgems"]))]
+	# checked BEFORE the pgems-only branch below: the day-7 reward has both
+	# gems AND pgems (150 regular gems + 1 prestige gem) — the old order
+	# matched "has pgems" first and showed the prestige-gem icon next to
+	# "+150", implying 150 prestige gems instead of 150 regular gems.
+	if r.has("gems") and r.has("pgems"): return ["ic_gems", "+%d" % int(r["gems"])]
+	if r.has("pgems"):     return ["ic_prestige", "+%d" % int(r["pgems"])]
 	if r.has("influence") and not r.has("gems"): return ["ic_prestige", "+%d🌐" % int(r["influence"])]
 	if r.has("gems"):      return ["ic_gems", "+%d" % int(r["gems"])]
 	return ["ic_gems", "?"]
@@ -1539,7 +1600,7 @@ func _show_daily_popup() -> void:
 ## Reward choice after tapping the golden bonus drone: small free reward now,
 ## or watch a rewarded ad for the (randomized-at-spawn) big reward.
 func _show_bonus_popup(ad_reward: Dictionary) -> void:
-	Audio.play("unlock")
+	Audio.play("unlock", 1.0, -3.0)   # matches the volume city-unlock already uses for this sample
 	var layer := _overlay(); var box := _popup_box(layer, UITheme.GOLD)
 	var hd := HBoxContainer.new(); hd.alignment = BoxContainer.ALIGNMENT_CENTER; hd.add_theme_constant_override("separation", 8)
 	hd.add_child(_icon("ic_drone", 30)); hd.add_child(_lbl("Drone Bónus!", 30, UITheme.GOLD)); box.add_child(hd)
@@ -1615,7 +1676,7 @@ func _settings_toggle(text: String, pressed: bool, cb: Callable) -> Control:
 	row.toggle_mode = true
 	row.button_pressed = pressed
 	row.custom_minimum_size = Vector2(0, 92)
-	var rowsb := UITheme.solid(UITheme.PANEL, 16)
+	var rowsb := UITheme.solid(UITheme.PANEL)   # R_BTN(14) — matches every other button/row of this weight
 	row.add_theme_stylebox_override("normal",  rowsb)
 	row.add_theme_stylebox_override("hover",   rowsb)
 	row.add_theme_stylebox_override("pressed", rowsb)
@@ -1689,6 +1750,13 @@ func _notification(what: int) -> void:
 		# tapping PT/EN, which is exactly the "still mixed" symptom reported.
 		if _settings_stats_lbl != null and is_instance_valid(_settings_stats_lbl):
 			_settings_stats_lbl.text = _settings_stats_text()
+		# mission titles are similarly gated behind a progress/ready/claimed
+		# change-detection cache (see _update_contracts) that a locale switch
+		# alone doesn't trip — force the next _update_contracts() tick to do
+		# a full rebuild so titles actually re-translate instead of staying
+		# in whichever language was active when the contract was rolled
+		for i in range(_mission_last_progress.size()):
+			_mission_last_progress[i] = -1.0
 
 func _settings_stats_text() -> String:
 	return tr("Entregas: %s  ·  Ganhos: %s\nRendimento: %s/s  ·  Combo: %d\nDrones: %d  ·  Países: %d/%d  ·  Streak: %dd\nPrestige: %d  ·  Conquistas: %d/%d") % [
@@ -1761,7 +1829,7 @@ func _show_settings() -> void:
 	)
 	box.add_child(restore)
 
-	var ver := _lbl("Drone Tycoon: Sky Fleet · v1.21.0 · © 2026 LPCF", 15, UITheme.MUTED)
+	var ver := _lbl("Drone Tycoon: Sky Fleet · v1.22.0 · © 2026 LPCF", 15, UITheme.MUTED)
 	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	ver.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	box.add_child(ver)
@@ -1779,9 +1847,8 @@ func _show_settings() -> void:
 
 func _show_reset_confirm() -> void:
 	var layer := _overlay(); var box := _popup_box(layer, UITheme.RED)
-	var hd := _lbl("Repor progresso?", 28, UITheme.RED)
-	hd.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hd.size_flags_horizontal = Control.SIZE_EXPAND_FILL; box.add_child(hd)
+	var hd := HBoxContainer.new(); hd.alignment = BoxContainer.ALIGNMENT_CENTER; hd.add_theme_constant_override("separation", 8)
+	hd.add_child(_icon("ic_gear", 26)); hd.add_child(_lbl("Repor progresso?", 28, UITheme.RED)); box.add_child(hd)
 	var warn := _lbl("Apaga TODO o progresso: créditos, drones, países, prestige e conquistas.\nNão pode ser desfeito.", 18, UITheme.MUTED)
 	warn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	warn.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; box.add_child(warn)
@@ -1828,7 +1895,8 @@ func _full_reset() -> void:
 
 func _show_offline_popup(amount: float, seconds: float) -> void:
 	var layer := _overlay(); var box := _popup_box(layer, UITheme.ACCENT)
-	box.add_child(_lbl("Bem-vindo de volta!", 30, UITheme.INK))
+	var hd := HBoxContainer.new(); hd.alignment = BoxContainer.ALIGNMENT_CENTER; hd.add_theme_constant_override("separation", 8)
+	hd.add_child(_icon("ic_income", 28)); hd.add_child(_lbl("Bem-vindo de volta!", 30, UITheme.INK)); box.add_child(hd)
 	var m := _lbl(tr("Os drones entregaram durante %s:") % Fmt.duration(seconds), 19, UITheme.MUTED)
 	m.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; m.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; box.add_child(m)
 	var big := _lbl(Fmt.short(amount), 40, UITheme.GOLD)
@@ -1863,7 +1931,7 @@ func _show_offline_popup(amount: float, seconds: float) -> void:
 	var dbl := Button.new(); dbl.text = "Recolher em DOBRO (anúncio)"
 	dbl.icon = _opt_tex("ic_ad"); dbl.expand_icon = true; dbl.add_theme_constant_override("icon_max_width", 24)
 	dbl.add_theme_font_size_override("font_size", 19); dbl.custom_minimum_size = Vector2(0, 66)
-	dbl.add_theme_stylebox_override("normal", UITheme.solid(UITheme.GREEN, 16))
+	dbl.add_theme_stylebox_override("normal", UITheme.solid(UITheme.GREEN))   # R_BTN(14)
 	dbl.add_theme_stylebox_override("focus",  StyleBoxEmpty.new())
 	dbl.pressed.connect(func():
 		layer.queue_free()
@@ -1968,8 +2036,7 @@ func _on_contract_completed(_slot: int) -> void:
 
 # ── Income milestone celebration ──────────────────────────────────────────────────
 
-func _check_income_milestones() -> void:
-	var ips := GameState.income_per_sec()
+func _check_income_milestones(ips: float) -> void:
 	while _income_milestone_idx < INCOME_MILESTONES.size() and ips >= float(INCOME_MILESTONES[_income_milestone_idx]):
 		var lbl: String = str(MILESTONE_LABELS[_income_milestone_idx])
 		_toast(tr("Nova marca: %s/s!") % lbl, UITheme.GREEN, "ic_fleet")
@@ -1985,33 +2052,45 @@ func _update_contracts() -> void:
 	for i in range(Contracts.SLOT_COUNT):
 		if i >= _mission_title_lbls.size(): break
 		var s: Dictionary = Contracts.slots[i] if i < Contracts.slots.size() else {}
-		(_mission_title_lbls[i] as Label).text = str(s.get("label", ""))
-		_set_fill(_mission_prog_bars[i] as Panel, Contracts.progress_pct(i))
-		var tgt := float(s.get("target", 1.0))
-		var prg := minf(float(s.get("progress", 0.0)), tgt)
-		(_mission_prog_lbls[i] as Label).text = Fmt.short(prg) + "/" + Fmt.short(tgt)
+		var claimed: bool = s.get("claimed", false)
+		var ready: bool = s.get("ready", false) and not claimed
+		var prog: float = float(s.get("progress", 0.0))
+
+		# time remaining ticks continuously — always updated, never gated
 		var rem := Contracts.time_remaining(i)
 		var t_lbl := _mission_time_lbls[i] as Label
-		if s.get("claimed", false):
+		if claimed:
 			t_lbl.text = tr("Nova em %ds") % int(rem)
 		elif i == 3:
 			t_lbl.text = "%dd %dh" % [int(rem) / 86400, (int(rem) % 86400) / 3600]
 		else:
 			t_lbl.text = "%d:%02d" % [int(rem) / 60, int(rem) % 60]
-		var ready: bool = s.get("ready", false) and not s.get("claimed", false)
+
+		# everything below only actually changes when progress/ready/claimed
+		# do — skip the tr()/Fmt.short() text rebuild + fill update otherwise
+		# (this runs 4x/sec; most of those ticks nothing here has moved)
+		if prog == _mission_last_progress[i] and ready == _mission_last_ready[i] and claimed == _mission_last_claimed[i]:
+			continue
+		_mission_last_progress[i] = prog; _mission_last_ready[i] = ready; _mission_last_claimed[i] = claimed
+
+		(_mission_title_lbls[i] as Label).text = Contracts.format_label(s)
+		_set_fill(_mission_prog_bars[i] as Panel, Contracts.progress_pct(i))
+		var tgt := float(s.get("target", 1.0))
+		var prg := minf(prog, tgt)
+		(_mission_prog_lbls[i] as Label).text = Fmt.short(prg) + "/" + Fmt.short(tgt)
 		var cbtn := _mission_claim_btns[i] as Button
 		cbtn.disabled = not ready
 		if ready:
-			cbtn.text = "REIVINDICAR"; cbtn.icon = null
-		elif s.get("claimed", false):
-			cbtn.text = "Recebido"; cbtn.icon = _opt_tex("ic_check")
+			cbtn.text = tr("REIVINDICAR"); cbtn.icon = null
+		elif claimed:
+			cbtn.text = tr("Recebido"); cbtn.icon = _opt_tex("ic_check")
 		else:
-			cbtn.text = "Em curso"; cbtn.icon = null
+			cbtn.text = tr("Em curso"); cbtn.icon = null
 		_afford(cbtn, ready)
 		if i < _mission_x2_btns.size():
 			(_mission_x2_btns[i] as Button).visible = ready
 		if i < _mission_reroll_btns.size():
-			(_mission_reroll_btns[i] as Button).visible = (i < 3) and not ready and not s.get("claimed", false)
+			(_mission_reroll_btns[i] as Button).visible = (i < 3) and not ready and not claimed
 		var rc: float = float(s.get("reward_credits", 0.0))
 		var rg: int = int(s.get("reward_gems", 0))
 		(_mission_reward_lbls[i] as Label).text = "+" + Fmt.short(rc)
@@ -2038,7 +2117,7 @@ func _build_missions_tab() -> ScrollContainer:
 
 		# Top row: title + time remaining
 		var top := HBoxContainer.new(); top.add_theme_constant_override("separation", 6); cv.add_child(top)
-		var title := _lbl(str(s.get("label", "")), 18, UITheme.INK)
+		var title := _lbl(Contracts.format_label(s), 18, UITheme.INK)
 		title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; top.add_child(title)
 		_mission_title_lbls.append(title)
@@ -2047,13 +2126,15 @@ func _build_missions_tab() -> ScrollContainer:
 
 		# rewarded-ad reroll (rotating slots only; weekly is fixed)
 		var ri := i
-		var rbtn := Button.new(); rbtn.text = "Trocar"
+		var rbtn := Button.new(); rbtn.text = tr("Trocar")
 		rbtn.icon = _opt_tex("ic_ad"); rbtn.expand_icon = true
 		rbtn.add_theme_constant_override("icon_max_width", 20)
 		rbtn.add_theme_font_size_override("font_size", 14)
 		rbtn.custom_minimum_size = Vector2(96, 44)
-		rbtn.add_theme_stylebox_override("normal", UITheme.solid(UITheme.PANEL2, 12))
-		rbtn.add_theme_stylebox_override("focus",  StyleBoxEmpty.new())
+		rbtn.add_theme_stylebox_override("normal",  UITheme.solid(UITheme.PANEL2, 12))
+		rbtn.add_theme_stylebox_override("hover",   UITheme.solid(UITheme.PANEL2.lightened(0.08), 12))
+		rbtn.add_theme_stylebox_override("pressed", UITheme.solid(UITheme.PANEL2.darkened(0.12), 12))
+		rbtn.add_theme_stylebox_override("focus",   StyleBoxEmpty.new())
 		rbtn.visible = (i < 3)
 		rbtn.pressed.connect(func():
 			if not _can_tap(): return
@@ -2091,7 +2172,7 @@ func _build_missions_tab() -> ScrollContainer:
 
 		var ci := i
 		var cbtn := _buy_btn(slot_color.darkened(0.18))
-		cbtn.text = "Em curso"; cbtn.disabled = true
+		cbtn.text = tr("Em curso"); cbtn.disabled = true
 		cbtn.expand_icon = true
 		cbtn.add_theme_constant_override("icon_max_width", 20)
 		cbtn.size_flags_horizontal = Control.SIZE_SHRINK_END

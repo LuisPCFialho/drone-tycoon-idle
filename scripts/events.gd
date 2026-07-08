@@ -35,6 +35,7 @@ var total_participated := 0
 var current_mult := 1.0
 var current_spd_mult := 1.0
 var _one_shot_fired := false
+var _active_one_shot := false   # cached copy of DEFS[active]["one_shot"] — see _trigger()
 
 func _ready() -> void:
     next_wait = randf_range(60.0, 180.0)  # first event 1-3 min
@@ -42,8 +43,10 @@ func _ready() -> void:
 func _process(delta: float) -> void:
     if active != "":
         timer -= delta
-        var def: Dictionary = DEFS[active]
-        if bool(def.get("one_shot", false)) and _one_shot_fired:
+        # DEFS[active] used to be re-fetched every single frame for the
+        # entire event duration (up to 480s for "festival") just to read a
+        # constant flag — cached once in _trigger() instead
+        if _active_one_shot and _one_shot_fired:
             _end()
         elif timer <= 0.0:
             _end()
@@ -64,6 +67,7 @@ func _trigger() -> void:
     timer = float(def.get("dur", 120.0))
     current_mult = float(def.get("mult", 1.0))
     current_spd_mult = float(def.get("spd", 1.0))
+    _active_one_shot = bool(def.get("one_shot", false))
     total_participated += 1
     if has_node("/root/Achievements"): Achievements.note_event(total_participated)
     if has_node("/root/Audio"): Audio.play("unlock")
