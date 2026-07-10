@@ -34,6 +34,7 @@ var total_earned := 0.0
 var total_deliveries := 0
 var combo_window_bonus := 0.0   # +seconds on combo decay (gem shop, permanent)
 var vip_temp_until := 0         # unix timestamp; Prestige Shop "vip_24h" grants a temporary VIP window
+var auto_manager := false       # VIP perk: auto-buys the cheapest affordable drone/upgrade periodically
 
 # --- transient ---
 var earn_boost_mult := 2.0
@@ -44,6 +45,10 @@ var vdrones: Array = []
 var _autosave_t := 0.0
 var combo: int = 0
 var _combo_decay_t: float = 0.0
+var _auto_manager_t := 0.0
+const AUTO_MANAGER_INTERVAL := 2.5
+
+signal auto_bought(kind: String)
 
 func _ready() -> void:
 	_rebuild_drones()
@@ -73,7 +78,7 @@ func skin_collection_mult() -> float:
 func global_mult() -> float:
 	return (1.0 + 0.05 * float(influence)) * (1.0 + 0.06 * float(talents["global"])) \
 		* (1.0 + 0.25 * float(gem_boost)) * Billing.perm_mult * vip_mult() \
-		* Events.current_mult * Prestige.permanent_mult * skin_collection_mult()
+		* Events.current_mult * Prestige.effective_mult() * skin_collection_mult()
 
 func route_mult() -> float:
 	var rl := int(levels.get("routes", 0))
@@ -185,6 +190,37 @@ func _process(delta: float) -> void:
 		_autosave_t = 0.0
 		SaveSystem.save_game()
 
+	if auto_manager and is_vip_active():
+		_auto_manager_t += delta
+		if _auto_manager_t >= AUTO_MANAGER_INTERVAL:
+			_auto_manager_t = 0.0
+			_try_auto_buy()
+
+## VIP perk: every AUTO_MANAGER_INTERVAL, buy ONE unit (never bulk — stays
+## incremental rather than instant-maxing) of whichever single purchase
+## (1 drone, or 1 level of any of the 4 upgrades) is currently cheapest and
+## affordable. Silently does nothing if auto_manager is off or VIP lapsed
+## (temp "vip_24h" window expiring), rather than force-disabling the toggle.
+func _try_auto_buy() -> void:
+	var best_kind := ""
+	var best_cost := INF
+	var dc := drone_cost()
+	if credits >= dc and dc < best_cost:
+		best_kind = "drone"; best_cost = dc
+	for key: String in Economy.UPGRADE_ORDER:
+		var uc := upgrade_cost_multi(key, 1)
+		if credits >= uc and uc < best_cost:
+			best_kind = key; best_cost = uc
+	if best_kind == "":
+		return
+	if best_kind == "drone":
+		credits -= dc; drones += 1
+		_rebuild_drones()
+		Achievements.note_drone_buy(1, drones)
+	else:
+		credits -= best_cost; levels[best_kind] = int(levels[best_kind]) + 1
+	auto_bought.emit(best_kind)
+
 # ---------------------------------------------------------------- drones
 func drone_cost_multi(count: int) -> float:
 	var rate := Economy.DRONE_RATE
@@ -216,6 +252,17 @@ func next_city_cost() -> float:
 	if cities_unlocked >= max_cities():
 		return -1.0
 	return Economy.city_unlock_cost(current_country, cities_unlocked)
+
+## Seconds until `cost` is affordable at the current income rate. -1.0 if
+## already affordable (nothing to wait for) or if income is ~0 (would divide
+## by ~zero / never happen) — callers should treat -1.0 as "no ETA to show".
+func eta_seconds(cost: float) -> float:
+	if cost <= credits:
+		return -1.0
+	var ips := income_per_sec()
+	if ips <= 0.01:
+		return -1.0
+	return (cost - credits) / ips
 
 func can_unlock_city() -> bool:
 	var c := next_city_cost()
@@ -394,7 +441,7 @@ func to_dict() -> Dictionary:
 		"earn_boost_timer": earn_boost_timer, "total_earned": total_earned, "total_deliveries": total_deliveries,
 		"combo_window_bonus": combo_window_bonus,
 		"skins_owned": skins_owned.duplicate(), "skin_active": skin_active,
-		"vip_temp_until": vip_temp_until,
+		"vip_temp_until": vip_temp_until, "auto_manager": auto_manager,
 	}
 
 func from_dict(d: Dictionary) -> void:
@@ -421,6 +468,7 @@ func from_dict(d: Dictionary) -> void:
 	total_deliveries = int(d.get("total_deliveries", 0))
 	combo_window_bonus = float(d.get("combo_window_bonus", 0.0))
 	vip_temp_until = int(d.get("vip_temp_until", 0))
+	auto_manager = bool(d.get("auto_manager", false))
 	skins_owned = ["classic"]
 	for s in Array(d.get("skins_owned", [])):
 		var sid: String = str(s)

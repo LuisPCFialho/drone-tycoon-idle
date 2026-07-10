@@ -20,9 +20,14 @@ func _process(_delta: float) -> void:
 	# overlay before that settles — doing so mid-tween kills nodes a queued
 	# Tweener still references ("lambda capture was freed" engine error).
 	match _frame:
+		130:
+			_shot("shot_0a_welcome.png")   # first-launch welcome popup (v1.23.0)
+		149:
+			_close_overlays(main)   # closes the welcome/daily-reward popup, if any —
+			                        # queue_free() needs a frame to actually take effect
+			                        # before the viewport texture stops showing it
 		150:
-			_close_overlays(main)   # closes the daily-reward popup, if any
-			_shot("shot_0_fleet.png")
+			_shot("shot_0_fleet.png")   # locked Auto-Manager card (not VIP yet)
 			main.call("_switch_tab", 1)
 		165:
 			_shot("shot_1_cities.png")
@@ -106,6 +111,21 @@ func _process(_delta: float) -> void:
 			(main.get("_bonus") as Node).call("_on_tapped")
 		605:
 			_shot("shot_9_bonus_popup.png")
+			_close_overlays(main)
+			GameState.vip_temp_until = int(Time.get_unix_time_from_system()) + 86400   # unlock Auto-Manager toggle
+			main.call("_switch_tab", 0)   # retriggers _stagger_in — needs its own clear run-up to the shot below
+		645:
+			var pg3: ScrollContainer = main.get("_pages")[0]
+			var vb3 := pg3.get_child(0)
+			pg3.scroll_vertical = int(vb3.size.y)   # scroll to the bottom to reveal Auto-Manager + Prestige
+		650:
+			_shot("shot_0b_fleet_vip.png")   # Auto-Manager toggle visible (VIP active)
+			main.call("_switch_tab", 3)   # Legado — verify the new Ascendant Core row
+		690:
+			var pg4: ScrollContainer = main.get("_pages")[3]
+			pg4.ensure_control_visible(main.get("_ascendant_btn"))
+		695:
+			_shot("shot_3b_legado_ascendant.png")
 			get_tree().quit()
 
 func _find_button_by_text(node: Node, text: String) -> Button:

@@ -13,6 +13,7 @@ var pgems := 0
 var total_pgems := 0
 var permanent_mult := 1.0
 var shop_owned: Array = []   # list of owned shop item ids
+var ascendant_level := 0     # repeatable pgems sink (see ascendant_cost/effective_mult)
 
 const SHOP := {
     "speed_5":     {"name": "Turbo de Arranque",    "cost": 5,  "desc": "Começa sempre com velocidade nível 5."},
@@ -105,6 +106,25 @@ func buy_shop(id: String) -> bool:
 func has_shop(id: String) -> bool:
     return id in shop_owned
 
+## Repeatable pgems sink (the fixed 9-item shop above is all one-time
+## unlocks, so a long-lived player eventually has nothing left to spend
+## pgems on). Each level is +1% stacking on top of the prestige-count
+## multiplier — see effective_mult(), which GameState.global_mult() reads
+## instead of `permanent_mult` directly.
+func ascendant_cost() -> int:
+    return 10 + ascendant_level * 6
+
+func buy_ascendant() -> bool:
+    var cost := ascendant_cost()
+    if pgems < cost: return false
+    pgems -= cost
+    ascendant_level += 1
+    SaveSystem.save_game()
+    return true
+
+func effective_mult() -> float:
+    return permanent_mult * (1.0 + 0.01 * float(ascendant_level))
+
 ## Full reset ("Reset Progress" in Settings) — Prestige tier/shop wiped.
 func reset() -> void:
     count = 0
@@ -112,11 +132,13 @@ func reset() -> void:
     total_pgems = 0
     permanent_mult = 1.0
     shop_owned = []
+    ascendant_level = 0
 
 func to_dict() -> Dictionary:
     return {
         "count": count, "pgems": pgems, "total": total_pgems,
         "mult": permanent_mult, "shop": shop_owned.duplicate(),
+        "ascendant": ascendant_level,
     }
 
 func from_dict(d: Dictionary) -> void:
@@ -125,3 +147,4 @@ func from_dict(d: Dictionary) -> void:
     total_pgems = int(d.get("total", 0))
     permanent_mult = float(d.get("mult", 1.0))
     shop_owned = Array(d.get("shop", []))
+    ascendant_level = int(d.get("ascendant", 0))

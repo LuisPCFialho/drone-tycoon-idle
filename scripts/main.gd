@@ -1,5 +1,5 @@
 extends Control
-## Main scene — Drone Tycoon: Sky Fleet  v1.22.0
+## Main scene — Drone Tycoon: Sky Fleet  v1.23.0
 
 const NAV_H  := 132.0
 const TABS_H := 532.0
@@ -76,6 +76,10 @@ var _achieve_prog_lbls := {}
 var _settings_stats_lbl: Label = null
 var _prestige_ready_prev := false
 var _tap_block_until := 0   # ms; drag-scroll guard so dragging never buys
+var _auto_mgr_toggle: Control
+var _auto_mgr_locked: Control
+var _ascendant_lbl: Label
+var _ascendant_btn: Button
 
 # Missions tab (contracts)
 var _mission_title_lbls: Array = []
@@ -134,10 +138,45 @@ func _ready() -> void:
 
 ## Welcome popups run only after the boot ceremony so it is never covered.
 func _post_boot(loaded: bool) -> void:
-	if loaded and GameState.pending_offline > 1.0:
+	if not loaded:
+		_show_welcome_popup()
+	elif GameState.pending_offline > 1.0:
 		_show_offline_popup(GameState.pending_offline, GameState.pending_offline_seconds)
 	elif Daily.pending:
 		_show_daily_popup()
+
+## First-ever launch only (SaveSystem.load_game() found no save) — this game's
+## only onboarding: four short tips, then straight into the boot ceremony's
+## normal flow. Never shown again once a save exists.
+func _show_welcome_popup() -> void:
+	var layer := _overlay(); var box := _popup_box(layer, UITheme.ACCENT)
+	var hd := HBoxContainer.new(); hd.alignment = BoxContainer.ALIGNMENT_CENTER; hd.add_theme_constant_override("separation", 8)
+	hd.add_child(_icon("ic_drone", 34)); hd.add_child(_lbl(tr("Bem-vindo, Piloto!"), 27, UITheme.INK)); box.add_child(hd)
+	var sub := _lbl(tr("A tua frota de entregas está pronta a descolar."), 15, UITheme.MUTED)
+	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; box.add_child(sub)
+
+	var tips: Array = [
+		["ic_drone", UITheme.ACCENT, "Compra drones e melhorias", "Cada entrega gera créditos automaticamente."],
+		["ic_city", UITheme.GOLD, "Expande pelo mundo", "Abre cidades e países para multiplicar os lucros."],
+		["ic_gems", UITheme.CYAN, "Gemas só de anúncios e ofertas", "Vê anúncios ou compra-as — nunca se ganham a jogar."],
+		["ic_prestige", UITheme.PRESTIGE, "Faz Prestige para bónus permanentes", "Reinicia com multiplicadores que ficam para sempre."],
+	]
+	for t: Array in tips:
+		var row := HBoxContainer.new(); row.add_theme_constant_override("separation", 10); box.add_child(row)
+		row.add_child(_icon_badge(str(t[0]), t[1], 40, 20))
+		var tv := VBoxContainer.new(); tv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		tv.size_flags_vertical = Control.SIZE_SHRINK_CENTER; tv.add_theme_constant_override("separation", 1); row.add_child(tv)
+		var tt := _lbl(tr(str(t[2])), 15, UITheme.INK); tt.add_theme_font_override("font", UITheme.font("Bold")); tv.add_child(tt)
+		var td := _lbl(tr(str(t[3])), 12, UITheme.MUTED); td.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; tv.add_child(td)
+
+	var go_btn := _wide_btn(UITheme.ACCENT)
+	go_btn.text = tr("Vamos a voar!")
+	go_btn.custom_minimum_size = Vector2(0, 68)
+	go_btn.pressed.connect(func():
+		Fx.press(go_btn); Audio.play("tap"); layer.queue_free()
+	)
+	box.add_child(go_btn)
 
 ## First-launch ceremony: branded cover, drone fly-through, then UI cascade.
 func _boot_intro(loaded: bool) -> void:
@@ -253,7 +292,7 @@ func _build_hud() -> void:
 
 	# Row 1: stat chips (credits prominent)
 	var r1 := HBoxContainer.new(); r1.add_theme_constant_override("separation", 6); v.add_child(r1)
-	var c1 := _chip("ic_credits", UITheme.GOLD, 25); _credits_lbl = c1["label"]; _credits_chip = c1["root"]; r1.add_child(c1["root"])
+	var c1 := _chip("ic_credits", UITheme.GOLD, 30, 26, true); _credits_lbl = c1["label"]; _credits_chip = c1["root"]; r1.add_child(c1["root"])
 	var c2 := _chip("ic_gems", UITheme.CYAN, 22); _gems_lbl = c2["label"]; _gems_chip = c2["root"]; r1.add_child(c2["root"])
 	var c3 := _chip("ic_prestige", UITheme.VIOLET, 21); _infl_lbl = c3["label"]; _infl_chip = c3["root"]; r1.add_child(c3["root"])
 	_vip_badge = PanelContainer.new(); _vip_badge.add_theme_stylebox_override("panel", UITheme.solid(UITheme.GOLD, 14))
@@ -299,7 +338,7 @@ func _build_hud() -> void:
 	_income_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT; r2.add_child(_income_lbl)
 
 	# Row 3: progress ribbon (% to next unlock)
-	var ribbon_bg := Panel.new(); ribbon_bg.custom_minimum_size = Vector2(0, 5)
+	var ribbon_bg := Panel.new(); ribbon_bg.custom_minimum_size = Vector2(0, 8)
 	ribbon_bg.add_theme_stylebox_override("panel", UITheme.prog_bg()); v.add_child(ribbon_bg)
 	_ribbon_fill = Panel.new()
 	_ribbon_fill.anchor_left = 0; _ribbon_fill.anchor_right = 0.0
@@ -314,18 +353,18 @@ func _build_hud() -> void:
 	var ev_info := VBoxContainer.new(); ev_info.size_flags_horizontal = Control.SIZE_EXPAND_FILL; _event_row.add_child(ev_info)
 	_event_name_lbl = Label.new(); _event_name_lbl.add_theme_font_size_override("font_size", 17)
 	_event_name_lbl.add_theme_font_override("font", UITheme.font("Bold")); ev_info.add_child(_event_name_lbl)
-	var bar_bg := Panel.new(); bar_bg.custom_minimum_size = Vector2(0, 6)
+	var bar_bg := Panel.new(); bar_bg.custom_minimum_size = Vector2(0, 8)
 	bar_bg.add_theme_stylebox_override("panel", UITheme.prog_bg()); ev_info.add_child(bar_bg)
 	_event_timer_bar = Panel.new()
 	_event_timer_bar.anchor_left = 0; _event_timer_bar.anchor_right = 1
 	_event_timer_bar.anchor_top = 0; _event_timer_bar.anchor_bottom = 1
 	bar_bg.add_child(_event_timer_bar)
 
-func _chip(icon: String, color: Color, lbl_size: int) -> Dictionary:
+func _chip(icon: String, color: Color, lbl_size: int, icon_sz := 22, hero := false) -> Dictionary:
 	var pc := PanelContainer.new()
-	pc.add_theme_stylebox_override("panel", UITheme.stat_chip(color))
-	var h := HBoxContainer.new(); h.add_theme_constant_override("separation", 4); pc.add_child(h)
-	h.add_child(_icon(icon, 22))
+	pc.add_theme_stylebox_override("panel", UITheme.hero_chip(color) if hero else UITheme.stat_chip(color))
+	var h := HBoxContainer.new(); h.add_theme_constant_override("separation", 5 if hero else 4); pc.add_child(h)
+	h.add_child(_icon(icon, icon_sz))
 	var lbl := Label.new(); lbl.add_theme_font_size_override("font_size", lbl_size)
 	lbl.add_theme_color_override("font_color", color)
 	lbl.add_theme_font_override("font", UITheme.font("Bold")); h.add_child(lbl)
@@ -591,6 +630,13 @@ func _build_fleet_tab() -> ScrollContainer:
 	for key: String in ["speed", "cargo", "value", "routes"]:
 		v.add_child(_make_upgrade_row(key))
 
+	v.add_child(_section("Gestor Automático", UITheme.VIOLET, "ic_vip"))
+	_auto_mgr_toggle = _settings_toggle("Gestor de Frota Automático", GameState.auto_manager, func(on: bool):
+		GameState.auto_manager = on; SaveSystem.save_game())
+	v.add_child(_auto_mgr_toggle)
+	_auto_mgr_locked = _make_auto_mgr_locked_card()
+	v.add_child(_auto_mgr_locked)
+
 	v.add_child(_section("Prestige", UITheme.PRESTIGE, "ic_prestige"))
 	var pp := PanelContainer.new(); pp.add_theme_stylebox_override("panel", UITheme.prestige_card()); v.add_child(pp)
 	var pv := VBoxContainer.new(); pv.add_theme_constant_override("separation", 8); pp.add_child(pv)
@@ -619,7 +665,7 @@ func _build_cities_tab() -> ScrollContainer:
 	var r := _scroll("Cidades"); var v: VBoxContainer = r[1]
 	_progress_lbl = _lbl("", 17, UITheme.MUTED)
 	_progress_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; v.add_child(_progress_lbl)
-	var cpb := Panel.new(); cpb.custom_minimum_size = Vector2(0, 8)
+	var cpb := Panel.new(); cpb.custom_minimum_size = Vector2(0, 10)
 	cpb.add_theme_stylebox_override("panel", UITheme.prog_bg()); v.add_child(cpb)
 	_city_prog_fill = Panel.new()
 	_city_prog_fill.anchor_left = 0; _city_prog_fill.anchor_right = 0.0
@@ -747,6 +793,7 @@ func _rebuild_prestige_shop() -> void:
 	_prestige_shop_rows.clear()
 	for id: String in Prestige.SHOP_ORDER:
 		_prestige_shop_box.add_child(_make_prestige_shop_row(id))
+	_prestige_shop_box.add_child(_make_ascendant_row())
 
 ## Rebuilds the Achievements list from scratch — see _rebuild_prestige_shop.
 ## Cards differ structurally by done/secret state at construction time (extra
@@ -785,6 +832,33 @@ func _make_prestige_shop_row(id: String) -> PanelContainer:
 		pb.text = "Obtido"; pb.icon = _opt_tex("ic_check"); pb.disabled = true
 	ph.add_child(pb)
 	_prestige_shop_rows[id] = {"btn": pb, "cost": int(item["cost"])}
+	return pp
+
+## Repeatable pgems sink at the end of the Prestige Shop list — unlike the
+## fixed one-shot items above it, this one never shows "Obtido"; its cost/level
+## text is refreshed every frame in _process() (see _ascendant_lbl/_ascendant_btn).
+func _make_ascendant_row() -> PanelContainer:
+	var pp := PanelContainer.new(); pp.add_theme_stylebox_override("panel", UITheme.prestige_card())
+	var ph := HBoxContainer.new(); ph.add_theme_constant_override("separation", 10); pp.add_child(ph)
+	var pv := VBoxContainer.new(); pv.size_flags_horizontal = Control.SIZE_EXPAND_FILL; ph.add_child(pv)
+	pv.add_child(_lbl(tr("Núcleo Ascendente"), 19, UITheme.INK))
+	_ascendant_lbl = _lbl("", 14, UITheme.MUTED)
+	_ascendant_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; pv.add_child(_ascendant_lbl)
+	_ascendant_btn = Button.new()
+	_ascendant_btn.icon = _opt_tex("ic_prestige"); _ascendant_btn.expand_icon = true
+	_ascendant_btn.add_theme_constant_override("icon_max_width", 20)
+	_ascendant_btn.custom_minimum_size = Vector2(106, 52); _ascendant_btn.add_theme_font_size_override("font_size", 18)
+	_ascendant_btn.add_theme_stylebox_override("normal",   UITheme.prestige_btn_ready())
+	_ascendant_btn.add_theme_stylebox_override("disabled", UITheme.action_btn_disabled())
+	_ascendant_btn.add_theme_stylebox_override("focus",    StyleBoxEmpty.new())
+	_ascendant_btn.pressed.connect(func():
+		if not _can_tap(): return
+		if Prestige.buy_ascendant():
+			Fx.press(_ascendant_btn); Audio.play("buy"); _reward_fx(_ascendant_btn, UITheme.PRESTIGE, "gem", 8)
+		else:
+			Fx.error_shake(_ascendant_btn)
+	)
+	ph.add_child(_ascendant_btn)
 	return pp
 
 func _make_achievement_row(id: String) -> PanelContainer:
@@ -938,13 +1012,19 @@ func _afford(b: Button, affordable: bool) -> void:
 	var sb: StyleBox = b.get_meta("sb_a") if affordable else b.get_meta("sb_n")
 	b.add_theme_stylebox_override("normal", sb)
 
+## Short "ready in Xm Ys" suffix for a not-yet-affordable cost's detail text —
+## "" when already affordable or income is ~0 (see GameState.eta_seconds()).
+func _eta_suffix(cost: float) -> String:
+	var s := GameState.eta_seconds(cost)
+	return ("  ·  " + tr("pronto em %s") % Fmt.duration(s)) if s > 0.0 else ""
+
 ## Compact horizontal purchase row: [icon] [title+detail] [buy button].
 ## Returns {card, title, detail, right(HBox for the action button)}.
 func _row(accent: Color, icon_name: String) -> Dictionary:
 	var card := _card(accent)
 	var h := HBoxContainer.new(); h.add_theme_constant_override("separation", 10)
 	card.add_child(h)
-	h.add_child(_icon(icon_name, 32))
+	h.add_child(_icon_badge(icon_name, accent))
 	var info := VBoxContainer.new(); info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	info.size_flags_vertical = Control.SIZE_SHRINK_CENTER; info.add_theme_constant_override("separation", 1)
 	h.add_child(info)
@@ -986,6 +1066,20 @@ func _make_upgrade_row(key: String) -> PanelContainer:
 	)
 	r["right"].add_child(btn)
 	_rows[key] = {"btn": btn, "detail": r["detail"]}
+	return r["card"]
+
+## Shown instead of the Auto-Manager toggle while VIP is inactive — tapping
+## jumps to the Shop tab (index 4) rather than gating the switch itself, since
+## toggling a Button.toggle_mode row would desync from GameState.auto_manager
+## the moment VIP lapses.
+func _make_auto_mgr_locked_card() -> PanelContainer:
+	var r := _row(UITheme.VIOLET, "ic_vip")
+	r["title"].text = tr("Gestor de Frota Automático")
+	r["detail"].text = tr("Compra sozinho a opção mais barata a cada poucos segundos. Exclusivo VIP.")
+	r["detail"].autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	var btn := _cbuy(UITheme.VIOLET, 110.0); btn.text = tr("VIP")
+	btn.pressed.connect(func(): Fx.press(btn); _switch_tab(4))
+	r["right"].add_child(btn)
 	return r["card"]
 
 func _make_talent_row(key: String) -> PanelContainer:
@@ -1119,6 +1213,11 @@ func _process(delta: float) -> void:
 	_vip_badge.visible = GameState.is_vip_active()
 	if _pgems_lbl != null and is_instance_valid(_pgems_lbl):
 		_pgems_lbl.text = str(Prestige.pgems)
+	if _ascendant_lbl != null and is_instance_valid(_ascendant_lbl):
+		var alv := Prestige.ascendant_level; var acost := Prestige.ascendant_cost()
+		_ascendant_lbl.text = tr("Nv %d · +%d%% permanente · repetível") % [alv, alv]
+		_ascendant_btn.text = str(acost)
+		_ascendant_btn.disabled = Prestige.pgems < acost
 
 	# chip-pop on discrete currency increases
 	if GameState.gems > _prev_gems: Fx.chip_pop(_gems_chip, UITheme.CYAN)
@@ -1173,7 +1272,11 @@ func _process(delta: float) -> void:
 	_drone_btn.text     = (("×%d   " % dc) if GameState.buy_mode != 1 else "") + Fmt.short(dcost)
 	_drone_btn.disabled = GameState.credits < dcost
 	_afford(_drone_btn, not _drone_btn.disabled)
-	_drone_detail.text  = "Tens %d drones" % GameState.drones
+	_drone_detail.text  = ("Tens %d drones" % GameState.drones) + _eta_suffix(dcost)
+
+	var vip_on := GameState.is_vip_active()
+	_auto_mgr_toggle.visible = vip_on
+	_auto_mgr_locked.visible = not vip_on
 
 	for key: String in _rows:
 		var count := GameState.planned_count(key); var cost := GameState.upgrade_cost_multi(key, maxi(1, count))
@@ -1275,7 +1378,7 @@ func _process(delta: float) -> void:
 		_city_btn.text = Fmt.short(next_city_cost); _city_btn.disabled = GameState.credits < next_city_cost
 		var ci := GameState.current_country; var cities := Economy.country_cities(ci)
 		var nx: int = clampi(GameState.cities_unlocked + 1, 1, cities.size() - 1)
-		_city_detail.text = tr("Próxima: %s") % cities[nx]["name"]
+		_city_detail.text = (tr("Próxima: %s") % cities[nx]["name"]) + _eta_suffix(next_city_cost)
 	_afford(_city_btn, not _city_btn.disabled and next_city_cost >= 0.0)
 	var ec := GameState.expand_cost()
 	if ec < 0.0:
@@ -1286,7 +1389,7 @@ func _process(delta: float) -> void:
 		_expand_detail.text = tr("Abre todas as cidades de %s primeiro.") % Economy.country_name(GameState.current_country)
 	else:
 		_expand_btn.text = Fmt.short(ec); _expand_btn.disabled = GameState.credits < ec
-		_expand_detail.text = tr("Seguinte: %s (+Influência)") % Economy.country_name(GameState.current_country + 1)
+		_expand_detail.text = (tr("Seguinte: %s (+Influência)") % Economy.country_name(GameState.current_country + 1)) + _eta_suffix(ec)
 	_afford(_expand_btn, not _expand_btn.disabled and ec >= 0.0 and GameState.all_cities_unlocked())
 
 	# prestige button — pgems_on_next_prestige() depends on current_country
@@ -1306,9 +1409,9 @@ func _process(delta: float) -> void:
 		_prestige_btn.text = tr("Prestige (requer 5.º país)")
 	if ready != _prestige_ready_prev or _prestige_info_lbl.text == "":
 		if ready:
-			_prestige_info_lbl.text = tr("Tier: %s · Prestige #%d · ×%.2f\nReinicias mantendo gemas e conquistas.") % [Prestige.tier_name(), Prestige.count + 1, Prestige.permanent_mult * 1.15]
+			_prestige_info_lbl.text = tr("Tier: %s · Prestige #%d · ×%.2f\nReinicias mantendo gemas e conquistas.") % [Prestige.tier_name(), Prestige.count + 1, Prestige.effective_mult() * 1.15]
 		else:
-			_prestige_info_lbl.text = tr("Chega ao 5.º país para fazer prestige.\nTier: %s · Prestige %d · ×%.2f") % [Prestige.tier_name(), Prestige.count, Prestige.permanent_mult]
+			_prestige_info_lbl.text = tr("Chega ao 5.º país para fazer prestige.\nTier: %s · Prestige %d · ×%.2f") % [Prestige.tier_name(), Prestige.count, Prestige.effective_mult()]
 		if ready != _prestige_ready_prev:
 			Fx.breathe(_prestige_btn, ready)
 		_prestige_ready_prev = ready
@@ -1651,7 +1754,7 @@ func _show_prestige_confirm() -> void:
 	var hd := HBoxContainer.new(); hd.alignment = BoxContainer.ALIGNMENT_CENTER; hd.add_theme_constant_override("separation", 8)
 	hd.add_child(_icon("ic_prestige", 28)); hd.add_child(_lbl("Confirmar Prestige", 28, UITheme.PRESTIGE)); box.add_child(hd)
 	var gain := Prestige.pgems_on_next_prestige()
-	var info := _lbl(tr("Vais ganhar  %d  Gemas Prestige\ne um multiplicador ×%.2f permanente.\n\nPerdes créditos, drones e upgrades.\nMantens gemas normais e conquistas.") % [gain, Prestige.permanent_mult * 1.15], 18, UITheme.MUTED)
+	var info := _lbl(tr("Vais ganhar  %d  Gemas Prestige\ne um multiplicador ×%.2f permanente.\n\nPerdes créditos, drones e upgrades.\nMantens gemas normais e conquistas.") % [gain, Prestige.effective_mult() * 1.15], 18, UITheme.MUTED)
 	info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; box.add_child(info)
 	var confirm := Button.new(); confirm.text = "SIM, FAZER PRESTIGE"
@@ -1757,6 +1860,12 @@ func _notification(what: int) -> void:
 		# in whichever language was active when the contract was rolled
 		for i in range(_mission_last_progress.size()):
 			_mission_last_progress[i] = -1.0
+		# _prestige_info_lbl is similarly gated behind a "ready" state-change
+		# check in _process() — once readiness stops changing, a locale switch
+		# alone never retriggers the tr()+%-format rebuild, leaving it stuck in
+		# whichever language was active the last time readiness flipped.
+		if _prestige_info_lbl != null and is_instance_valid(_prestige_info_lbl):
+			_prestige_info_lbl.text = ""
 
 func _settings_stats_text() -> String:
 	return tr("Entregas: %s  ·  Ganhos: %s\nRendimento: %s/s  ·  Combo: %d\nDrones: %d  ·  Países: %d/%d  ·  Streak: %dd\nPrestige: %d  ·  Conquistas: %d/%d") % [
@@ -2003,6 +2112,16 @@ func _lbl(text: String, font_size: int, color: Color) -> Label:
 func _icon(n: String, sz := 30) -> TextureRect:
 	var r := TextureRect.new(); r.texture = _opt_tex(n); r.custom_minimum_size = Vector2(sz, sz)
 	r.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; r.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED; return r
+
+## Row icon in a small accent-tinted circular backdrop (see UITheme.icon_badge)
+## — replaces a bare floating glyph with the "icon chip" look of AAA mobile UIs.
+func _icon_badge(icon_name: String, accent: Color, sz := 44, icon_sz := 22) -> PanelContainer:
+	var p := PanelContainer.new()
+	p.custom_minimum_size = Vector2(sz, sz)
+	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	p.add_theme_stylebox_override("panel", UITheme.icon_badge(accent, sz, icon_sz))
+	p.add_child(_icon(icon_name, icon_sz))
+	return p
 
 func _opt_tex(n: String) -> Texture2D:
 	var path := ART + n + ".png"

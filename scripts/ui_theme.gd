@@ -279,6 +279,15 @@ static func stat_chip(accent := ACCENT) -> StyleBoxFlat:
 	_glow(s, accent, 0.16, 6, Vector2(0, 3))
 	return s
 
+## Hero variant of stat_chip — bigger padding + stronger glow, reserved for the
+## HUD's primary currency (credits) so it visually outranks the secondary chips.
+static func hero_chip(accent := GOLD) -> StyleBoxFlat:
+	var s := stat_chip(accent)
+	s.content_margin_left = 16; s.content_margin_right = 16
+	s.content_margin_top = 10; s.content_margin_bottom = 10
+	_glow(s, accent, 0.32, 12, Vector2(0, 4))
+	return s
+
 ## Toast: glass body + left accent border + accent leading glow.
 static func toast(accent := ACCENT) -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()
@@ -354,7 +363,7 @@ static func prog_bg() -> StyleBoxFlat:
 static func prog_fill(col: Color) -> StyleBoxFlat:
 	var s := StyleBoxFlat.new(); s.bg_color = col; s.set_corner_radius_all(3)
 	s.border_color = col.lightened(0.30); s.border_width_top = 1
-	_glow(s, col, 0.45, 6, Vector2(0, 0))
+	_glow(s, col, 0.55, 9, Vector2(0, 0))
 	return s
 
 ## Daily reward card.
@@ -389,6 +398,20 @@ static func danger_btn() -> StyleBoxFlat:
 	s.content_margin_top = 12; s.content_margin_bottom = 12
 	s.border_color = RED.lightened(0.22); s.border_width_top = 2
 	_glow(s, RED, 0.42, 10, Vector2(0, 4))
+	return s
+
+## Circular icon backdrop for a row's leading icon: an accent-tinted disc with
+## a glow, sized so a smaller icon sits centered inside it via content margin
+## (the "icon chip" AAA mobile games use instead of a bare floating glyph).
+static func icon_badge(accent: Color, sz: int, icon_sz: int) -> StyleBoxFlat:
+	var s := StyleBoxFlat.new()
+	s.bg_color = PANEL2.lerp(accent, 0.30); s.set_corner_radius_all(sz / 2)
+	var pad := float(sz - icon_sz) / 2.0
+	s.content_margin_left = pad; s.content_margin_right = pad
+	s.content_margin_top = pad; s.content_margin_bottom = pad
+	s.border_color = Color(accent.r, accent.g, accent.b, 0.55); s.set_border_width_all(1)
+	s.border_width_top = 1
+	_glow(s, accent, 0.26, 8, Vector2(0, 2))
 	return s
 
 ## Glowing "ready to prestige" button (gets shimmer + breathe from fx).
