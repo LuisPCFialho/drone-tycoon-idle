@@ -1938,7 +1938,12 @@ func _show_settings() -> void:
 	)
 	box.add_child(restore)
 
-	var ver := _lbl("Drone Tycoon: Sky Fleet · v1.22.0 · © 2026 LPCF", 15, UITheme.MUTED)
+	# Read the version from ProjectSettings (single source of truth in
+	# project.godot) rather than a hardcoded string — a hardcoded literal here
+	# silently went stale across releases (showed an old version in Settings
+	# even when the APK itself was current).
+	var app_ver := str(ProjectSettings.get_setting("application/config/version", "?"))
+	var ver := _lbl("Drone Tycoon: Sky Fleet · v%s · © 2026 LPCF" % app_ver, 15, UITheme.MUTED)
 	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	ver.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	box.add_child(ver)
