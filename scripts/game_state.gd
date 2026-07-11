@@ -10,11 +10,11 @@ const AUTOSAVE_INTERVAL := 15.0
 const EARN_BOOST_DURATION := 300.0
 const MAX_VISUAL_DRONES := 16
 const COMBO_DECAY := 10.0
-## Drawn drones travel on a SEPARATE, deliberately slow visual clock (v["vt"])
-## that is NOT tied to speed upgrades — so the fleet stays watchable instead of
-## turning into an unreadable blur once speed_factor climbs. ~20x slower than the
-## logical delivery cadence. Income/combo/deliveries are unchanged (still driven
-## by the fast logical v["t"]); this only affects where drones are DRAWN.
+## Drawn drones travel on a SEPARATE, slower visual clock (v["vt"]). It STILL
+## scales with speed_factor() — so buying speed upgrades visibly speeds the fleet
+## up — but is 20x slower than the logical delivery cadence so they're followable
+## rather than a blur. Income/combo/deliveries are unchanged (still driven by the
+## fast logical v["t"]); this only affects where drones are DRAWN.
 const VISUAL_SPEED_FACTOR := 0.05
 
 signal delivered(amount: float, city_index: int)
@@ -191,9 +191,10 @@ func _process(delta: float) -> void:
 			delivered.emit(amt, 1 + int(v["route"]))
 		elif v["t"] <= 0.0:
 			v["t"] = 0.0; v["dir"] = 1
-		# purely-cosmetic slow visual travel (see VISUAL_SPEED_FACTOR) — bounces
-		# between pads on its own clock, independent of the income logic above
-		var vrate := BASE_SPEED * VISUAL_SPEED_FACTOR / d
+		# cosmetic slow visual travel (see VISUAL_SPEED_FACTOR) — scales with sf
+		# (speed upgrades still visibly speed drones up) but 20x slower than the
+		# income logic above, so the fleet is followable instead of a blur
+		var vrate := BASE_SPEED * sf * VISUAL_SPEED_FACTOR / d
 		v["vt"] += vrate * float(v["vdir"]) * delta
 		if v["vt"] >= 1.0:
 			v["vt"] = 1.0; v["vdir"] = -1
