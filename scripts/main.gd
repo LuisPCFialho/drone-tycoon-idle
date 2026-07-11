@@ -1,5 +1,5 @@
 extends Control
-## Main scene — Drone Tycoon: Sky Fleet  v1.25.0
+## Main scene — Drone Tycoon: Sky Fleet  v1.26.0
 
 const NAV_H  := 132.0
 const TABS_H := 532.0
@@ -150,6 +150,11 @@ func _post_boot(loaded: bool) -> void:
 ## normal flow. Never shown again once a save exists.
 func _show_welcome_popup() -> void:
 	var layer := _overlay(); var box := _popup_box(layer, UITheme.ACCENT)
+	# small 3D hero drone crowning the popup (same procedural model as the boot)
+	var hero: SubViewportContainer = load("res://scripts/hero_drone.gd").new()
+	hero.custom_minimum_size = Vector2(180, 132)
+	hero.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	box.add_child(hero)
 	var hd := HBoxContainer.new(); hd.alignment = BoxContainer.ALIGNMENT_CENTER; hd.add_theme_constant_override("separation", 8)
 	hd.add_child(_icon("ic_drone", 34)); hd.add_child(_lbl(tr("Bem-vindo, Piloto!"), 27, UITheme.INK)); box.add_child(hd)
 	var sub := _lbl(tr("A tua frota de entregas está pronta a descolar."), 15, UITheme.MUTED)
@@ -177,6 +182,7 @@ func _show_welcome_popup() -> void:
 		Fx.press(go_btn); Audio.play("tap"); layer.queue_free()
 	)
 	box.add_child(go_btn)
+	Fx.shimmer(go_btn, UITheme.ACCENT, true)
 
 ## First-launch ceremony: branded cover, drone fly-through, then UI cascade.
 func _boot_intro(loaded: bool) -> void:
@@ -189,18 +195,11 @@ func _boot_intro(loaded: bool) -> void:
 	cover.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	layer.add_child(cover)
 
-	# On some Android devices get_viewport_rect() still reports a stale
-	# pre-rotation/pre-stretch size on the very first _ready() frame (the
-	# portrait lock + canvas_items stretch transform hasn't settled yet). Any
-	# pixel math done against that stale size — the drone's fly-through path,
-	# in particular — ends up positioned for the wrong screen and renders
-	# "cut off" once the real transform kicks in a frame later, even though
-	# our fixed-size screenshot harness never reproduces it (its window never
-	# transitions). Waiting two frames guarantees the settled portrait geometry
-	# before anything here reads get_viewport_rect().
+	# Let the just-built UI settle its portrait layout for a couple of frames
+	# before we start tweening the HUD/adbar in (the title/hero are anchored
+	# full-rect / centred so they no longer need any viewport-size math).
 	await get_tree().process_frame
 	await get_tree().process_frame
-	var vs := get_viewport_rect().size
 
 	# Span the FULL screen width (not PRESET_CENTER) so the title is centred
 	# horizontally. PRESET_CENTER anchors the box at the centre POINT using its
@@ -211,9 +210,14 @@ func _boot_intro(loaded: bool) -> void:
 	var box := VBoxContainer.new()
 	box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
-	box.add_theme_constant_override("separation", 6)
+	box.add_theme_constant_override("separation", 8)
 	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	cover.add_child(box)
+	# 3D hero drone hovering above the wordmark (procedural — see hero_drone.gd)
+	var hero: SubViewportContainer = load("res://scripts/hero_drone.gd").new()
+	hero.custom_minimum_size = Vector2(260, 240)
+	hero.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	box.add_child(hero)
 	var t1 := _lbl("DRONE TYCOON", 44, UITheme.INK)
 	t1.add_theme_font_override("font", UITheme.font("Bold"))
 	t1.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -221,18 +225,19 @@ func _boot_intro(loaded: bool) -> void:
 	var t2 := _lbl("SKY FLEET", 20, UITheme.CYAN)
 	t2.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	t2.size_flags_horizontal = Control.SIZE_EXPAND_FILL; box.add_child(t2)
-	# Defensive: keep interpreting the larger axis as height even if some
-	# device still reports a landscape-shaped size at this point.
-	var pw := minf(vs.x, vs.y)
-	var ph := maxf(vs.x, vs.y)
-	var dr := TextureRect.new(); dr.texture = _opt_tex("drone_blue")
-	dr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	dr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	dr.size = Vector2(96, 96)
-	dr.pivot_offset = Vector2(48, 48)
-	dr.position = Vector2(-120, ph * 0.42 - 48.0)
-	dr.rotation = 0.10
-	cover.add_child(dr)
+	# entrance: hero drops+fades in, wordmark rises in just after
+	hero.modulate = Color(1, 1, 1, 0)
+	hero.pivot_offset = hero.custom_minimum_size * 0.5
+	t1.modulate = Color(1, 1, 1, 0); t2.modulate = Color(1, 1, 1, 0)
+	if not Fx.reduce_motion:
+		hero.scale = Vector2(0.7, 0.7)
+		var intro := create_tween(); intro.set_parallel(true)
+		intro.tween_property(hero, "modulate:a", 1.0, 0.4)
+		intro.tween_property(hero, "scale", Vector2.ONE, 0.6).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		intro.tween_property(t1, "modulate:a", 1.0, 0.4).set_delay(0.25)
+		intro.tween_property(t2, "modulate:a", 1.0, 0.4).set_delay(0.38)
+	else:
+		hero.modulate = Color.WHITE; t1.modulate = Color.WHITE; t2.modulate = Color.WHITE
 
 	_hud.offset_top = -160.0
 	_map.zoom = 1.15
@@ -242,8 +247,8 @@ func _boot_intro(loaded: bool) -> void:
 		pill.scale = Vector2(0.8, 0.8)
 
 	var tw := create_tween()
-	tw.tween_property(dr, "position:x", pw + 140.0, 0.9).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	tw.tween_property(cover, "modulate:a", 0.0, 0.35)
+	tw.tween_interval(1.15)   # let the hero drone hover on screen a beat before the reveal
+	tw.tween_property(cover, "modulate:a", 0.0, 0.4)
 	tw.parallel().tween_property(_hud, "offset_top", 20.0, 0.45).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	tw.parallel().tween_property(_map, "zoom", 1.0, 0.6).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	for i in range(_adbar.get_child_count()):
@@ -272,6 +277,11 @@ func _bg() -> void:
 		ab.offset_top = 0; ab.offset_bottom = 360
 		ab.modulate = Color(1, 1, 1, 0.55); ab.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		add_child(ab)
+		# slow breathing glow so the sky feels alive behind the HUD
+		if not Fx.reduce_motion:
+			var aur_tw := ab.create_tween().set_loops()
+			aur_tw.tween_property(ab, "modulate:a", 0.72, 4.5).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+			aur_tw.tween_property(ab, "modulate:a", 0.42, 4.5).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
 func _build_map() -> void:
 	_map = MapView.new(); _map.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); add_child(_map)
