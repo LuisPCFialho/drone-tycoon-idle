@@ -118,9 +118,14 @@ func city_unlock_cost(country_idx: int, n: int) -> float:
 	return 2600.0 * pow(3.15, float(n)) * cost_tier(country_idx)
 
 ## Cost to expand to the next country (available once all cities are unlocked).
-## Big upfront gate so jumping country is a real milestone, not a quick hop.
+## Always 5x the priciest city of this country so jumping country is a real
+## milestone you must save up for — NOT the giveaway it was when it was a flat
+## 80k * cost_tier that undercut the last city's cost. Scales per country for
+## free because city_unlock_cost already folds in cost_tier(country_idx).
 func expand_cost(country_idx: int) -> float:
-	return 80000.0 * cost_tier(country_idx)
+	var count := country_cities(country_idx).size()
+	var last_n := maxi(1, count - 2)   # n of the last (most expensive) city unlock
+	return 5.0 * city_unlock_cost(country_idx, last_n)
 
 func talent_cost(level: int) -> int:
 	return int(ceil(4.0 * pow(1.12, float(level))))

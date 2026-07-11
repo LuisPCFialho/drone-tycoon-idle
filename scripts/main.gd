@@ -1,5 +1,5 @@
 extends Control
-## Main scene — Drone Tycoon: Sky Fleet  v1.26.0
+## Main scene — Drone Tycoon: Sky Fleet  v1.27.0
 
 const NAV_H  := 132.0
 const TABS_H := 532.0
@@ -1717,6 +1717,23 @@ func _show_daily_popup() -> void:
 			layer.queue_free()
 		)
 		box.add_child(claim_btn)
+		# rewarded-ad path: double the whole daily reward
+		var dbl_btn := Button.new(); dbl_btn.text = tr("Receber a DOBRAR (anúncio)")
+		dbl_btn.icon = _opt_tex("ic_ad"); dbl_btn.expand_icon = true; dbl_btn.add_theme_constant_override("icon_max_width", 24)
+		dbl_btn.add_theme_font_size_override("font_size", 19); dbl_btn.custom_minimum_size = Vector2(0, 66)
+		dbl_btn.add_theme_stylebox_override("normal", UITheme.solid(UITheme.GOLD.darkened(0.06)))
+		dbl_btn.add_theme_color_override("font_color", Color(0.12, 0.08, 0.0))
+		dbl_btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+		dbl_btn.pressed.connect(func():
+			layer.queue_free()
+			Ads.show_rewarded("daily2x", func():
+				Daily.claim(2.0); _disp_credits = GameState.credits
+				Fx.coin_fountain(self, Vector2(size.x * 0.5, size.y * 0.5), _credits_chip.get_global_rect().get_center(), 12)
+				Fx.chip_pop(_gems_chip, UITheme.CYAN)
+			)
+		)
+		box.add_child(dbl_btn)
+		Fx.shimmer(dbl_btn, UITheme.GOLD, true)
 	var close := _close_btn(layer); box.add_child(close)
 
 ## Reward choice after tapping the golden bonus drone: small free reward now,

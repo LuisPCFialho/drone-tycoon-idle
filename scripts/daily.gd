@@ -42,20 +42,23 @@ func _check_new_day() -> void:
     streak_updated.emit(streak)
     reward_ready.emit()
 
-func claim() -> void:
+## mult=2.0 is the rewarded-ad "double the reward" path (see the daily popup).
+func claim(mult := 1.0) -> void:
     if not pending: return
     var idx: int = (streak - 1) % REWARDS.size()
     var r: Dictionary = REWARDS[idx]
     if has_node("/root/GameState"):
-        if r.has("gems"):      GameState.gems += int(r["gems"])
-        if r.has("hours"):     GameState.credits += GameState.income_per_sec() * float(r["hours"]) * 3600.0
-        if r.has("boost"):     GameState.earn_boost_timer = float(r["boost"]) * 60.0
+        if r.has("gems"):      GameState.gems += int(round(float(r["gems"]) * mult))
+        if r.has("hours"):     GameState.credits += GameState.income_per_sec() * float(r["hours"]) * 3600.0 * mult
+        if r.has("boost"):     GameState.earn_boost_timer = float(r["boost"]) * 60.0 * mult
         if r.has("influence"):
-            GameState.influence += int(r["influence"])
-            GameState.influence_total += int(r["influence"])
+            var inf := int(round(float(r["influence"]) * mult))
+            GameState.influence += inf
+            GameState.influence_total += inf
     if r.has("pgems") and has_node("/root/Prestige"):
-        Prestige.pgems += int(r["pgems"])
-        Prestige.total_pgems += int(r["pgems"])
+        var pg := int(round(float(r["pgems"]) * mult))
+        Prestige.pgems += pg
+        Prestige.total_pgems += pg
     last_claim = _today()
     pending = false
     if has_node("/root/Audio"): Audio.play("milestone")

@@ -617,7 +617,8 @@ func _draw_drones(cap: Vector2, cities: Array, route_geom: Dictionary) -> void:
 			var rr: int = clampi(1 + route, 1, cities.size() - 1)
 			b = _proj(Vector2(cities[rr]["x"], cities[rr]["y"]))
 			ctrl = _route_ctrl(cap, b, route)
-		var tval: float = float(v["t"])
+		var tval: float = float(v.get("vt", v["t"]))   # slow cosmetic clock (see game_state VISUAL_SPEED_FACTOR)
+		var vdir: int = int(v.get("vdir", v["dir"]))
 		var base := _route_point(cap, ctrl, b, tval)
 		# takeoff/landing ease: shrink + settle near pads instead of instant flips
 		var edge := minf(tval, 1.0 - tval)
@@ -643,14 +644,14 @@ func _draw_drones(cap: Vector2, cities: Array, route_geom: Dictionary) -> void:
 		# carried package on outbound leg (world-space: hangs below the drone),
 		# scaled by dsc so it shrinks/settles in sync with the drone near pads
 		# instead of staying full-size while the drone shrinks around it
-		if int(v["dir"]) == 1:
+		if vdir == 1:
 			if _package != null:
 				var psz := 18.0 * dsc
 				draw_texture_rect(_package, Rect2(pos.x - psz * 0.5, pos.y + 9.0 * dsc, psz, psz), false)
 
 		# heading from bezier tangent so the drone faces its travel direction,
 		# with a light banking wobble
-		var deriv := (ctrl - cap).lerp(b - ctrl, tval) * float(v["dir"])
+		var deriv := (ctrl - cap).lerp(b - ctrl, tval) * float(vdir)
 		var ang := 0.0
 		if deriv.length_squared() > 0.0001:
 			ang = deriv.angle() + PI * 0.5

@@ -8,10 +8,12 @@ class_name BonusDrone
 signal caught(ad_reward: Dictionary)
 
 const FLIGHT_TIME := 9.0
-const FIRST_WAIT_MIN := 90.0
-const FIRST_WAIT_MAX := 150.0
-const WAIT_MIN := 180.0
-const WAIT_MAX := 360.0
+# More frequent than before (was 180–360s) so the golden drone — the main
+# opt-in rewarded-ad hook — comes around more often without being spammy.
+const FIRST_WAIT_MIN := 60.0
+const FIRST_WAIT_MAX := 110.0
+const WAIT_MIN := 120.0
+const WAIT_MAX := 240.0
 const TRAIL_LEN := 8
 
 ## Possible big (ad) rewards. "kind" is matched in main.gd's popup handler.

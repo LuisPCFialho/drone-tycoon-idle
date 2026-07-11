@@ -21,6 +21,7 @@ var _admob: Admob = null
 var _ad_ready := false
 var _pending_kind := ""
 var _pending_cb: Callable
+var _watch_token := 0   # invalidates a stale watchdog when a newer ad is shown
 
 func _ready() -> void:
 	if OS.get_name() != "Android" or not Engine.has_singleton("AdmobPlugin"):
@@ -32,7 +33,13 @@ func _ready() -> void:
 	_admob.rewarded_ad_loaded.connect(func(_info, _resp): _ad_ready = true)
 	_admob.rewarded_ad_failed_to_load.connect(func(_info, _err): _ad_ready = false; _retry_load_later())
 	_admob.rewarded_ad_user_earned_reward.connect(func(_info, _reward): _grant_pending())
-	_admob.rewarded_ad_dismissed_full_screen_content.connect(func(_info): _busy = false; _load_next_ad())
+	# Grant on dismiss too (not just on earned-reward): some devices/ad units
+	# never fire the earned-reward callback even after a full watch, which left
+	# the player unable to ever redeem. _grant_pending() is idempotent (guarded
+	# by _busy) so this never double-grants. Reward-on-dismiss is intentionally
+	# lenient — fine for the current test ad units; revisit if real ads demand
+	# completion-gated rewards.
+	_admob.rewarded_ad_dismissed_full_screen_content.connect(func(_info): _grant_pending(); _load_next_ad())
 	_admob.rewarded_ad_failed_to_show_full_screen_content.connect(func(_info, _err): _grant_pending())
 	_admob.initialize()
 
@@ -63,7 +70,20 @@ func show_rewarded(kind: String, on_reward: Callable = Callable()) -> void:
 		return
 	_pending_kind = kind
 	_pending_cb = on_reward
+	_watch_token += 1
 	_admob.show_rewarded_ad()
+	_watchdog(_watch_token)
+
+## Safety net for the reported "ad opens but freezes, reward never redeemable"
+## bug: if a shown ad produces NO terminal callback (earned / dismissed / failed)
+## within a generous window, don't leave the player soft-locked behind _busy —
+## grant the reward and reload. Guarded by _busy (any real callback clears it
+## first) and by the token (a newer show supersedes this watchdog).
+func _watchdog(token: int) -> void:
+	await get_tree().create_timer(35.0).timeout
+	if _busy and token == _watch_token:
+		_grant_pending()
+		_load_next_ad()
 
 func _grant_pending() -> void:
 	if not _busy:
