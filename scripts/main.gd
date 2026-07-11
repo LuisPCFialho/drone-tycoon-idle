@@ -202,16 +202,25 @@ func _boot_intro(loaded: bool) -> void:
 	await get_tree().process_frame
 	var vs := get_viewport_rect().size
 
+	# Span the FULL screen width (not PRESET_CENTER) so the title is centred
+	# horizontally. PRESET_CENTER anchors the box at the centre POINT using its
+	# size at call time — which is zero here (no children laid out yet) — so the
+	# labels overflowed to the right of centre instead of straddling it. With a
+	# full-rect box + ALIGNMENT_CENTER (vertical), each label fills the whole
+	# width and its CENTER text alignment lands dead-centre on screen.
 	var box := VBoxContainer.new()
-	box.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
 	box.add_theme_constant_override("separation", 6)
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	cover.add_child(box)
 	var t1 := _lbl("DRONE TYCOON", 44, UITheme.INK)
 	t1.add_theme_font_override("font", UITheme.font("Bold"))
-	t1.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; box.add_child(t1)
+	t1.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	t1.size_flags_horizontal = Control.SIZE_EXPAND_FILL; box.add_child(t1)
 	var t2 := _lbl("SKY FLEET", 20, UITheme.CYAN)
-	t2.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; box.add_child(t2)
+	t2.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	t2.size_flags_horizontal = Control.SIZE_EXPAND_FILL; box.add_child(t2)
 	# Defensive: keep interpreting the larger axis as height even if some
 	# device still reports a landscape-shaped size at this point.
 	var pw := minf(vs.x, vs.y)
