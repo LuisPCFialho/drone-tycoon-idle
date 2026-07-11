@@ -761,25 +761,26 @@ func _label(p: Vector2, text: String, col: Color) -> void:
 	if _font == null:
 		return
 	var lw := 220.0
-	# frosted pill backing for legibility
-	var tw := _measure(text, 16)
-	var pill := Rect2(p.x - tw * 0.5 - 8.0, p.y + 22.0, tw + 16.0, 22.0)
+	# frosted pill backing for legibility (pill height + baseline track the font
+	# size so a larger label never clips its backing)
+	var tw := _measure(text, 18)
+	var pill := Rect2(p.x - tw * 0.5 - 8.0, p.y + 22.0, tw + 16.0, 25.0)
 	draw_rect(pill, Color(MIDNIGHT.r, MIDNIGHT.g, MIDNIGHT.b, 0.55), true)
 	draw_rect(pill, Color(col.r, col.g, col.b, 0.25), false, 1.0)
-	draw_string(_font, Vector2(p.x - lw * 0.5, p.y + 38.0), text, HORIZONTAL_ALIGNMENT_CENTER, lw, 16, col)
+	draw_string(_font, Vector2(p.x - lw * 0.5, p.y + 40.0), text, HORIZONTAL_ALIGNMENT_CENTER, lw, 18, col)
 
 func _cost_chip(p: Vector2, cost: String) -> void:
 	if _font == null:
 		return
 	# lives ABOVE the marker (name pills live below) so lanes never collide
 	var lw := 200.0
-	var tw := _measure(cost, 15)
-	var pill := Rect2(p.x - tw * 0.5 - 9.0 - 9.0, p.y - 44.0, tw + 18.0 + 18.0, 22.0)
+	var tw := _measure(cost, 17)
+	var pill := Rect2(p.x - tw * 0.5 - 9.0 - 9.0, p.y - 46.0, tw + 18.0 + 18.0, 25.0)
 	draw_rect(pill, Color(MIDNIGHT.r, MIDNIGHT.g, MIDNIGHT.b, 0.62), true)
 	draw_rect(pill, Color(GOLD.r, GOLD.g, GOLD.b, 0.30), false, 1.0)
 	if _lock != null:
-		draw_texture_rect(_lock, Rect2(pill.position.x + 5.0, pill.position.y + 4.5, 13, 13), false, Color(GOLD.r, GOLD.g, GOLD.b, 0.95))
-	draw_string(_font, Vector2(p.x - lw * 0.5 + 8.0, p.y - 28.0), cost, HORIZONTAL_ALIGNMENT_CENTER, lw, 15, Color(GOLD.r, GOLD.g, GOLD.b, 0.95))
+		draw_texture_rect(_lock, Rect2(pill.position.x + 5.0, pill.position.y + 5.5, 14, 14), false, Color(GOLD.r, GOLD.g, GOLD.b, 0.95))
+	draw_string(_font, Vector2(p.x - lw * 0.5 + 8.0, p.y - 29.0), cost, HORIZONTAL_ALIGNMENT_CENTER, lw, 17, Color(GOLD.r, GOLD.g, GOLD.b, 0.95))
 
 # ---------------------------------------------------------------- pops / fx
 

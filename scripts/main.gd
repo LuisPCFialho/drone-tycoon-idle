@@ -1,5 +1,5 @@
 extends Control
-## Main scene — Drone Tycoon: Sky Fleet  v1.24.0
+## Main scene — Drone Tycoon: Sky Fleet  v1.25.0
 
 const NAV_H  := 132.0
 const TABS_H := 532.0
@@ -168,7 +168,7 @@ func _show_welcome_popup() -> void:
 		var tv := VBoxContainer.new(); tv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		tv.size_flags_vertical = Control.SIZE_SHRINK_CENTER; tv.add_theme_constant_override("separation", 1); row.add_child(tv)
 		var tt := _lbl(tr(str(t[2])), 15, UITheme.INK); tt.add_theme_font_override("font", UITheme.font("Bold")); tv.add_child(tt)
-		var td := _lbl(tr(str(t[3])), 12, UITheme.MUTED); td.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; tv.add_child(td)
+		var td := _lbl(tr(str(t[3])), 14, UITheme.MUTED); td.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; tv.add_child(td)
 
 	var go_btn := _wide_btn(UITheme.ACCENT)
 	go_btn.text = tr("Vamos a voar!")
@@ -729,7 +729,7 @@ func _rebuild_city_list() -> void:
 		if i == 0:
 			row.add_theme_stylebox_override("panel", UITheme.solid(UITheme.PANEL2.lerp(UITheme.GOLD, 0.10), 14))
 			h.add_child(_icon("ic_city", 22)); h.add_child(nm)
-			var tag := _lbl("SEDE", 14, UITheme.GOLD)
+			var tag := _lbl("SEDE", 16, UITheme.GOLD)
 			tag.add_theme_font_override("font", UITheme.font("Bold")); h.add_child(tag)
 		elif i <= GameState.cities_unlocked:
 			row.add_theme_stylebox_override("panel", UITheme.solid(UITheme.PANEL2.lerp(UITheme.CYAN, 0.08), 14))
@@ -822,7 +822,7 @@ func _make_prestige_shop_row(id: String) -> PanelContainer:
 	var ph := HBoxContainer.new(); ph.add_theme_constant_override("separation", 10); pp.add_child(ph)
 	var pv := VBoxContainer.new(); pv.size_flags_horizontal = Control.SIZE_EXPAND_FILL; ph.add_child(pv)
 	pv.add_child(_lbl(item["name"], 19, UITheme.INK))
-	var pd := _lbl(item["desc"], 14, UITheme.MUTED); pd.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; pv.add_child(pd)
+	var pd := _lbl(item["desc"], 16, UITheme.MUTED); pd.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; pv.add_child(pd)
 	var pb := Button.new(); pb.text = str(int(item["cost"]))
 	pb.icon = _opt_tex("ic_prestige"); pb.expand_icon = true; pb.add_theme_constant_override("icon_max_width", 20)
 	pb.custom_minimum_size = Vector2(106, 52); pb.add_theme_font_size_override("font_size", 18)
@@ -851,7 +851,7 @@ func _make_ascendant_row() -> PanelContainer:
 	var ph := HBoxContainer.new(); ph.add_theme_constant_override("separation", 10); pp.add_child(ph)
 	var pv := VBoxContainer.new(); pv.size_flags_horizontal = Control.SIZE_EXPAND_FILL; ph.add_child(pv)
 	pv.add_child(_lbl(tr("Núcleo Ascendente"), 19, UITheme.INK))
-	_ascendant_lbl = _lbl("", 14, UITheme.MUTED)
+	_ascendant_lbl = _lbl("", 16, UITheme.MUTED)
 	_ascendant_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; pv.add_child(_ascendant_lbl)
 	_ascendant_btn = Button.new()
 	_ascendant_btn.icon = _opt_tex("ic_prestige"); _ascendant_btn.expand_icon = true
@@ -882,7 +882,7 @@ func _make_achievement_row(id: String) -> PanelContainer:
 	var pv := VBoxContainer.new(); pv.size_flags_horizontal = Control.SIZE_EXPAND_FILL; ph.add_child(pv)
 	var name_lbl := _lbl("???" if secret else str(def["name"]), 18, UITheme.GOLD if done else UITheme.INK)
 	name_lbl.add_theme_font_override("font", UITheme.font("Bold")); pv.add_child(name_lbl)
-	var desc_lbl := _lbl("Conquista secreta." if secret else str(def["desc"]), 14, UITheme.MUTED)
+	var desc_lbl := _lbl("Conquista secreta." if secret else str(def["desc"]), 16, UITheme.MUTED)
 	desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; pv.add_child(desc_lbl)
 	if not done and not secret:
 		var prog := Achievements.progress(id)
@@ -1038,7 +1038,7 @@ func _row(accent: Color, icon_name: String) -> Dictionary:
 	info.size_flags_vertical = Control.SIZE_SHRINK_CENTER; info.add_theme_constant_override("separation", 1)
 	h.add_child(info)
 	var title := _lbl("", 18, UITheme.INK); info.add_child(title)
-	var detail := _lbl("", 13, UITheme.MUTED); info.add_child(detail)
+	var detail := _lbl("", 15, UITheme.MUTED); info.add_child(detail)
 	var right := HBoxContainer.new(); right.alignment = BoxContainer.ALIGNMENT_END
 	right.size_flags_vertical = Control.SIZE_SHRINK_CENTER; h.add_child(right)
 	return {"card": card, "title": title, "detail": detail, "right": right}
@@ -1158,7 +1158,7 @@ func _add_ribbon(card: PanelContainer, text: String, color: Color) -> void:
 	sb.content_margin_left = 8; sb.content_margin_right = 8
 	sb.content_margin_top = 3; sb.content_margin_bottom = 3
 	rb.add_theme_stylebox_override("panel", sb)
-	var l := _lbl(text, 11, Color(0.08, 0.06, 0.0))
+	var l := _lbl(text, 13, Color(0.08, 0.06, 0.0))
 	l.add_theme_font_override("font", UITheme.font("Bold"))
 	rb.add_child(l)
 	card.add_child(rb)
@@ -1680,12 +1680,12 @@ func _show_daily_popup() -> void:
 		var current := (i == cur_idx) and Daily.pending
 		day_box.add_theme_stylebox_override("panel", UITheme.daily_card(claimed, current))
 		var dv := VBoxContainer.new(); dv.add_theme_constant_override("separation", 3); day_box.add_child(dv)
-		var dl := _lbl("D%d" % (i+1), 12, UITheme.MUTED if not current else UITheme.GOLD)
+		var dl := _lbl("D%d" % (i+1), 14, UITheme.MUTED if not current else UITheme.GOLD)
 		dl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		dl.size_flags_horizontal = Control.SIZE_EXPAND_FILL; dv.add_child(dl)
 		var cd := _daily_compact(Daily.REWARDS[i])
 		var ic := _icon(cd[0], 20); ic.size_flags_horizontal = Control.SIZE_SHRINK_CENTER; dv.add_child(ic)
-		var rl := _lbl(cd[1], 12, UITheme.INK if not claimed else UITheme.GREEN)
+		var rl := _lbl(cd[1], 14, UITheme.INK if not claimed else UITheme.GREEN)
 		rl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		rl.size_flags_horizontal = Control.SIZE_EXPAND_FILL; dv.add_child(rl)
 		if claimed:
@@ -1931,7 +1931,7 @@ func _show_settings() -> void:
 	stats_card.add_child(stats)
 	_settings_stats_lbl = stats
 
-	var attr := _lbl("Música: Eric Matyas · soundimage.org", 14, UITheme.MUTED)
+	var attr := _lbl("Música: Eric Matyas · soundimage.org", 15, UITheme.MUTED)
 	attr.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; box.add_child(attr)
 
 	var restore := _wide_btn(UITheme.ACCENT); restore.text = "Restaurar compras"
@@ -2262,7 +2262,7 @@ func _build_missions_tab() -> ScrollContainer:
 		var rbtn := Button.new(); rbtn.text = tr("Trocar")
 		rbtn.icon = _opt_tex("ic_ad"); rbtn.expand_icon = true
 		rbtn.add_theme_constant_override("icon_max_width", 20)
-		rbtn.add_theme_font_size_override("font_size", 14)
+		rbtn.add_theme_font_size_override("font_size", 16)
 		rbtn.custom_minimum_size = Vector2(96, 44)
 		rbtn.add_theme_stylebox_override("normal",  UITheme.solid(UITheme.PANEL2, 12))
 		rbtn.add_theme_stylebox_override("hover",   UITheme.solid(UITheme.PANEL2.lightened(0.08), 12))
