@@ -1,5 +1,5 @@
 extends Control
-## Main scene — Drone Tycoon: Sky Fleet  v1.28.0
+## Main scene — Drone Tycoon: Sky Fleet  v1.29.0
 
 const NAV_H  := 132.0
 const TABS_H := 532.0
@@ -125,6 +125,9 @@ func _ready() -> void:
 	Daily.reward_ready.connect(func(): _show_daily_popup())
 	Prestige.prestiged.connect(_on_prestige)
 	Contracts.completed.connect(_on_contract_completed)
+	# ad-loyalty: count every rewarded ad; celebrate the gem mega-bonus every 10th
+	Ads.reward_granted.connect(_on_ad_watched)
+	GameState.ad_milestone.connect(_show_mega_bonus)
 
 	var loaded := SaveSystem.load_game()
 	_disp_credits = GameState.credits
@@ -1735,6 +1738,40 @@ func _show_daily_popup() -> void:
 		box.add_child(dbl_btn)
 		Fx.shimmer(dbl_btn, UITheme.GOLD, true)
 	var close := _close_btn(layer); box.add_child(close)
+
+## Fires once per completed rewarded ad. Advances the loyalty counter (which
+## drops a gem mega-bonus every 10th ad via GameState.ad_milestone → the popup
+## below) and toasts the countdown so the player sees the mega-bonus approaching.
+func _on_ad_watched(_kind: String) -> void:
+	GameState.register_ad_watched()
+	var into := GameState.ads_watched % GameState.MEGA_BONUS_EVERY
+	if into != 0:
+		var rem := GameState.MEGA_BONUS_EVERY - into
+		_toast(tr("Mega Bónus em %d anúncio(s)!") % rem, UITheme.CYAN, "ic_gems")
+
+## Celebration for the every-10-ads gem mega-bonus. Gems only (never credits) so
+## it stays off the credit economy — see GameState.register_ad_watched().
+func _show_mega_bonus(count: int, gems: int) -> void:
+	Audio.play("milestone")
+	var layer := _overlay(); var box := _popup_box(layer, UITheme.CYAN)
+	var hd := HBoxContainer.new(); hd.alignment = BoxContainer.ALIGNMENT_CENTER; hd.add_theme_constant_override("separation", 8)
+	hd.add_child(_icon("ic_gems", 34)); hd.add_child(_lbl(tr("MEGA BÓNUS!"), 32, UITheme.CYAN)); box.add_child(hd)
+	var sub := _lbl(tr("Viste %d anúncios. Obrigado!") % count, 16, UITheme.MUTED)
+	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sub.size_flags_horizontal = Control.SIZE_EXPAND_FILL; box.add_child(sub)
+	var amount_row := HBoxContainer.new(); amount_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	amount_row.add_theme_constant_override("separation", 8); box.add_child(amount_row)
+	amount_row.add_child(_icon("ic_gems", 44))
+	var big := _lbl("+%d" % gems, 48, UITheme.CYAN); big.add_theme_font_override("font", UITheme.font("Bold"))
+	amount_row.add_child(big)
+	var ok := _wide_btn(UITheme.CYAN.darkened(0.15)); ok.text = tr("Fantástico!")
+	ok.custom_minimum_size = Vector2(0, 68)
+	ok.pressed.connect(func(): Fx.press(ok); layer.queue_free())
+	box.add_child(ok)
+	Fx.chip_pop(_gems_chip, UITheme.CYAN)
+	if not Fx.reduce_motion:
+		Fx.confetti(self, Vector2(size.x * 0.5, size.y * 0.4), 34, [UITheme.CYAN, UITheme.GOLD, UITheme.GREEN])
+		Fx.screen_flash(self, UITheme.CYAN, 0.12)
 
 ## Reward choice after tapping the golden bonus drone: small free reward now,
 ## or watch a rewarded ad for the (randomized-at-spawn) big reward.

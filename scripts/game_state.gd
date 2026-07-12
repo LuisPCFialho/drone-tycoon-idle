@@ -41,6 +41,26 @@ var total_deliveries := 0
 var combo_window_bonus := 0.0   # +seconds on combo decay (gem shop, permanent)
 var vip_temp_until := 0         # unix timestamp; Prestige Shop "vip_24h" grants a temporary VIP window
 var auto_manager := false       # VIP perk: auto-buys the cheapest affordable drone/upgrade periodically
+var ads_watched := 0            # lifetime rewarded ads; every MEGA_BONUS_EVERY grants a gem mega-bonus
+
+# Loyalty reward: every 10th rewarded ad drops a gem mega-bonus. Gems (not
+# credits) keep it OFF the credit economy entirely — and gems are already the
+# ads/IAP-only currency, so an ad-triggered gem drop is fully on-brand and
+# doesn't disturb the cost/income balance.
+const MEGA_BONUS_EVERY := 10
+const MEGA_BONUS_GEMS := 100
+
+signal ad_milestone(count: int, gems_awarded: int)
+
+## Called once per completed rewarded ad (see Ads.reward_granted). Increments the
+## lifetime counter and, on every MEGA_BONUS_EVERY-th ad, awards a gem mega-bonus
+## and emits ad_milestone for the UI celebration.
+func register_ad_watched() -> void:
+	ads_watched += 1
+	if ads_watched % MEGA_BONUS_EVERY == 0:
+		gems += MEGA_BONUS_GEMS
+		ad_milestone.emit(ads_watched, MEGA_BONUS_GEMS)
+	SaveSystem.save_game()
 
 # --- transient ---
 var earn_boost_mult := 2.0
@@ -457,6 +477,7 @@ func to_dict() -> Dictionary:
 		"combo_window_bonus": combo_window_bonus,
 		"skins_owned": skins_owned.duplicate(), "skin_active": skin_active,
 		"vip_temp_until": vip_temp_until, "auto_manager": auto_manager,
+		"ads_watched": ads_watched,
 	}
 
 func from_dict(d: Dictionary) -> void:
@@ -484,6 +505,7 @@ func from_dict(d: Dictionary) -> void:
 	combo_window_bonus = float(d.get("combo_window_bonus", 0.0))
 	vip_temp_until = int(d.get("vip_temp_until", 0))
 	auto_manager = bool(d.get("auto_manager", false))
+	ads_watched = int(d.get("ads_watched", 0))
 	skins_owned = ["classic"]
 	for s in Array(d.get("skins_owned", [])):
 		var sid: String = str(s)
