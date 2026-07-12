@@ -43,6 +43,7 @@ var _aurora: Texture2D
 # --- projection fit + cinematic camera ---
 var _bbox := Rect2(0, 0, 1, 1)
 var _outline_cache: PackedVector2Array = PackedVector2Array()
+var _bbox_ci := -1   # country the bbox/outline was last computed for (self-heals on load)
 var _cam_tween: Tween
 
 # --- landmass geometry cache (rebuilt only when zoom/pan actually change) ---
@@ -184,6 +185,7 @@ func _recalc_bbox() -> void:
 	if r.size.x < 0.001 or r.size.y < 0.001:
 		r = Rect2(0, 0, 1, 1)
 	_bbox = r
+	_bbox_ci = ci
 
 func _reset_view() -> void:
 	zoom = 1.0
@@ -224,6 +226,16 @@ func _seed_ambiance() -> void:
 
 func _process(delta: float) -> void:
 	_t += delta
+	# Self-heal a stale country: loading a save sets GameState.current_country
+	# but emits no country_changed, so the bbox/outline cached at _ready() (for
+	# Portugal, country 0) would keep drawing the wrong map until the next
+	# expand. Detect the mismatch and re-fit here so a returning player sees the
+	# correct country immediately.
+	if GameState.current_country != _bbox_ci:
+		# only _recalc_bbox (fixes the outline/fit) + cost — NOT _reset_view: zoom/
+		# pan aren't persisted (already default on load) and resetting them here
+		# would stomp the boot intro's zoom-in tween on the first frame.
+		_recalc_bbox(); _refresh_next_cost()
 	# advance floating pops (mutate in place; skip entirely when idle — the
 	# common case outside the few seconds right after a delivery/unlock)
 	if not _pops.is_empty():
