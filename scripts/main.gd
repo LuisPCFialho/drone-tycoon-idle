@@ -1,5 +1,5 @@
 extends Control
-## Main scene — Drone Tycoon: Sky Fleet  v1.29.0
+## Main scene — Drone Tycoon: Sky Fleet  v1.30.0
 
 const NAV_H  := 132.0
 const TABS_H := 532.0
@@ -1955,7 +1955,10 @@ func _show_settings() -> void:
 	box.add_child(_settings_toggle("Som activado", not Audio.muted,
 		func(on): Audio.muted = not on; SaveSystem.save_game()))
 	box.add_child(_settings_toggle("Vibração", Fx.haptics,
-		func(on): Fx.haptics = on; SaveSystem.save_game()))
+		func(on):
+			Fx.haptics = on
+			if on: Fx.vibrate(60)   # immediate confirmation buzz so you can tell it works
+			SaveSystem.save_game()))
 	box.add_child(_settings_toggle("Reduzir animações", Fx.reduce_motion,
 		func(on): Fx.set_reduce_motion(on); SaveSystem.save_game()))
 

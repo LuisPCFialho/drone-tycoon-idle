@@ -80,7 +80,7 @@ func show_rewarded(kind: String, on_reward: Callable = Callable()) -> void:
 ## grant the reward and reload. Guarded by _busy (any real callback clears it
 ## first) and by the token (a newer show supersedes this watchdog).
 func _watchdog(token: int) -> void:
-	await get_tree().create_timer(35.0).timeout
+	await get_tree().create_timer(20.0).timeout
 	if _busy and token == _watch_token:
 		_grant_pending()
 		_load_next_ad()

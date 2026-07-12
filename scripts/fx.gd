@@ -186,8 +186,7 @@ func coin_fountain(parent: Node, from: Vector2, to: Vector2, count := 8) -> void
 	if parent == null:
 		return
 	# a coin fountain represents a bigger reward moment than a routine tap
-	# (press() vibrates 12ms, error_shake 20ms) — this had zero haptic before
-	_vibrate(20)
+	_vibrate(45)
 	var n: int = count
 	if reduce_motion:
 		n = int(max(3, count / 2))
@@ -478,7 +477,7 @@ func error_shake(node: Control) -> void:
 	var fl := node.create_tween()
 	fl.tween_property(node, "modulate", CORAL, 0.06)
 	fl.tween_property(node, "modulate", Color.WHITE, 0.18)
-	_vibrate(20)
+	_vibrate(60)   # error deserves a clear "nope" buzz
 
 # ════════════════════════════════════════════════════════════════════════════
 #  breathe
@@ -535,7 +534,7 @@ func prestige_ceremony(root: CanvasItem, on_midpoint: Callable) -> void:
 		if not reduce_motion:
 			burst(dim, center, Color(1.0, 0.44, 0.71), 12, "star")
 		screen_flash(layer, WHITE.lerp(VIOLET, 0.4), 0.22, 0.16)
-		_vibrate(40)
+		_vibrate(100)   # prestige is the biggest moment — long celebratory buzz
 		if on_midpoint.is_valid():
 			on_midpoint.call()
 	)
@@ -587,7 +586,11 @@ func _vibrate(ms: int) -> void:
 	if not haptics:
 		return
 	if OS.has_feature("mobile"):
-		Input.vibrate_handheld(ms)
+		# Floor at 25ms and request FULL amplitude. The old sub-20ms pulses
+		# (12ms taps, 20ms) are imperceptible on most phones — the vibrator
+		# barely spins up — which is why haptics felt like "it never vibrates"
+		# even though the API was firing and the VIBRATE permission is present.
+		Input.vibrate_handheld(maxi(ms, 25), 1.0)
 
 ## Public one-shot haptic pulse for callers outside Fx (e.g. main.gd's country
 ## expansion celebration) — same guard/behavior as the internal helper above.
