@@ -14,6 +14,7 @@ var total_pgems := 0
 var permanent_mult := 1.0
 var shop_owned: Array = []   # list of owned shop item ids
 var ascendant_level := 0     # repeatable pgems sink (see ascendant_cost/effective_mult)
+var run_start_earned := 0.0  # GameState.total_earned at the last prestige — how far THIS run went drives the pgem gain
 
 const SHOP := {
     "speed_5":     {"name": "Turbo de Arranque",    "cost": 5,  "desc": "Começa sempre com velocidade nível 5."},
@@ -28,8 +29,20 @@ const SHOP := {
 }
 const SHOP_ORDER := ["speed_5", "cargo_5", "value_5", "offline_10", "offline_20", "drones_10", "drones_25", "vip_24h", "start_c2"]
 
+## pgem gain now scales with how far THIS run pushed (log of credits earned since
+## the last prestige), not just country index — so grinding several more
+## countries before resetting is genuinely worth it (the "one more country"
+## pull), instead of the old optimum of always prestiging at MIN_COUNTRY.
+## Pure pgem faucet (never touches credit costs → cannot inflate the economy).
+func run_bonus() -> int:
+    if not has_node("/root/GameState"): return 0
+    var run: float = GameState.total_earned - run_start_earned
+    if run < 1.0: return 0
+    return int(floor(log(run) / log(28.0)))   # ~+4 at 1M, ~+6 at 1B, ~+8 at 1T
+
 func pgems_on_next_prestige() -> int:
-    return max(3, 5 + count * 3 + (GameState.current_country if has_node("/root/GameState") else 0))
+    var country: int = GameState.current_country if has_node("/root/GameState") else 0
+    return max(3, 5 + count * 3 + country + run_bonus())
 
 func can_prestige() -> bool:
     if not has_node("/root/GameState"): return false
@@ -62,6 +75,7 @@ func do_prestige() -> bool:
     pgems += pg; total_pgems += pg
     count += 1
     permanent_mult = pow(1.15, float(count))
+    run_start_earned = GameState.total_earned   # next run's depth is measured from here
     _soft_reset()
     if has_node("/root/Achievements"): Achievements.note_prestige(count)
     if has_node("/root/Audio"): Audio.play("prestige")
@@ -119,6 +133,7 @@ func buy_ascendant() -> bool:
     if pgems < cost: return false
     pgems -= cost
     ascendant_level += 1
+    if has_node("/root/Achievements"): Achievements.note_ascendant(ascendant_level)
     SaveSystem.save_game()
     return true
 
@@ -133,12 +148,13 @@ func reset() -> void:
     permanent_mult = 1.0
     shop_owned = []
     ascendant_level = 0
+    run_start_earned = 0.0
 
 func to_dict() -> Dictionary:
     return {
         "count": count, "pgems": pgems, "total": total_pgems,
         "mult": permanent_mult, "shop": shop_owned.duplicate(),
-        "ascendant": ascendant_level,
+        "ascendant": ascendant_level, "run_start": run_start_earned,
     }
 
 func from_dict(d: Dictionary) -> void:
@@ -148,3 +164,4 @@ func from_dict(d: Dictionary) -> void:
     permanent_mult = float(d.get("mult", 1.0))
     shop_owned = Array(d.get("shop", []))
     ascendant_level = int(d.get("ascendant", 0))
+    run_start_earned = float(d.get("run_start", 0.0))

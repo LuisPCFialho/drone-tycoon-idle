@@ -93,6 +93,9 @@ func time_pct() -> float:
     var d: Dictionary = DEFS.get(active, {})
     return clampf(timer / maxf(float(d.get("dur", 1.0)), 0.001), 0.0, 1.0)
 
+func time_left() -> float:
+    return timer if is_active() else 0.0
+
 func color() -> Color:
     if not is_active(): return Color.WHITE
     var ci: int = int(def().get("col", 0))

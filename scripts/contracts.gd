@@ -11,6 +11,7 @@ const EXPIRE_DELAY := 20.0  # seconds before a new contract spawns after claimin
 var slots: Array = []
 var _refresh_timers: Array = [0.0, 0.0, 0.0, 0.0]
 var _frame := 0
+var claim_streak := 0   # consecutive claims (resets if a contract expires unclaimed) → credit chain bonus
 
 func _ready() -> void:
 	_ensure_slots()
@@ -28,6 +29,7 @@ func _process(delta: float) -> void:
 			if _refresh_timers[i] <= 0.0:
 				_replace(i)
 		elif now >= int(s.get("deadline", 0)):
+			claim_streak = 0   # letting a contract expire breaks the claim chain
 			_replace(i)
 		elif str(s.get("type", "")) == "combo":
 			# only write when combo actually grew — was writing to the slot
@@ -70,7 +72,11 @@ func claim(i: int, mult := 1.0) -> bool:
 		return false
 	slots[i]["claimed"] = true
 	_refresh_timers[i] = EXPIRE_DELAY
-	var rc: float = float(s.get("reward_credits", 0.0)) * mult
+	claim_streak += 1
+	# credit chain bonus for claiming consecutively without letting one expire
+	# (credits only, capped +50% — rewards sustained active play, no gem faucet)
+	var chain: float = 1.0 + 0.05 * float(mini(claim_streak, 10))
+	var rc: float = float(s.get("reward_credits", 0.0)) * mult * chain
 	GameState.credits += rc
 	GameState.total_earned += rc
 	var rg: int = int(float(s.get("reward_gems", 0)) * mult)

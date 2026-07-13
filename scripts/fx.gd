@@ -96,8 +96,10 @@ func floating_label(parent: Node, text: String, color: Color, at_pos: Vector2, s
 	lbl.z_index = 80
 	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	parent.add_child(lbl)
-	# center pivot once sized
-	lbl.pivot_offset = Vector2(float(size) * float(text.length()) * 0.25, float(size) * 0.5)
+	# center pivot on the REAL measured width (Poppins is proportional — the old
+	# monospace guess size*len*0.25 made "+1.2M" spring in off-centre)
+	var mw: float = UITheme.font("SemiBold").get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+	lbl.pivot_offset = Vector2(mw * 0.5, float(size) * 0.5)
 
 	var rise: float = 56.0 if not reduce_motion else 32.0
 	var dur: float = _scaled(0.9)

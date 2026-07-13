@@ -55,6 +55,14 @@ const DEFS := {
     # Gems
     "gems_100":        {"name": "Coleccionador",          "desc": "Tens 100 gemas em simultâneo.",             "icon": "💎", "cat": "riqueza"},
     "gems_spent_500":  {"name": "Investidor",             "desc": "Gasta 500 gemas no total.",                 "icon": "💠", "cat": "riqueza"},
+    # Coleção / dedicação (previously-missing tracks)
+    "ads_10":          {"name": "Apoiante",               "desc": "Vê 10 anúncios.",                           "icon": "📺", "cat": "coleção"},
+    "ads_50":          {"name": "Patrono",                "desc": "Vê 50 anúncios.",                           "icon": "📺", "cat": "coleção"},
+    "ads_100":         {"name": "Mecenas",                "desc": "Vê 100 anúncios.",                          "icon": "⭐", "cat": "coleção"},
+    "golden_10":       {"name": "Caçador Dourado",        "desc": "Apanha 10 drones dourados.",                "icon": "🥇", "cat": "coleção"},
+    "combo_100":       {"name": "Em Chamas",              "desc": "Atinge um combo de 100.",                   "icon": "🔥", "cat": "frota"},
+    "ascendant_5":     {"name": "Ascensão",               "desc": "Sobe o Núcleo Ascendente 5 vezes.",         "icon": "🔺", "cat": "legado", "secret": true},
+    "skins_all":       {"name": "Estilista",              "desc": "Coleciona todas as skins.",                 "icon": "🎨", "cat": "coleção", "secret": true},
 }
 
 # Persisted
@@ -64,6 +72,7 @@ var counters := {
     "cities_total": 0,
     "events_total": 0,
     "gems_spent": 0,
+    "golden_total": 0,
 }
 
 # Transient
@@ -80,6 +89,9 @@ func _process(_delta: float) -> void:
     var session_ms := Time.get_ticks_msec() - _session_start_ms
     if session_ms >= 30 * 60 * 1000:
         check("session_30m", true)
+    if has_node("/root/GameState"):
+        check("combo_100", GameState.combo >= 100)
+        check("skins_all", GameState.skins_owned.size() >= Economy.SKINS.size())
 
 func _on_delivered(_amount: float, _city: int) -> void:
     counters["deliveries"] = int(counters.get("deliveries", 0)) + 1
@@ -132,6 +144,13 @@ func check_all_state() -> void:
     check("gems_100",    gs.gems >= 100)
     check("income_1k",   gs.income_per_sec() >= 1000.0)
     check("income_1m",   gs.income_per_sec() >= 1_000_000.0)
+    check("ads_10",  gs.ads_watched >= 10)
+    check("ads_50",  gs.ads_watched >= 50)
+    check("ads_100", gs.ads_watched >= 100)
+    check("skins_all", gs.skins_owned.size() >= Economy.SKINS.size())
+    check("golden_10", int(counters.get("golden_total", 0)) >= 10)
+    if has_node("/root/Prestige"):
+        check("ascendant_5", Prestige.ascendant_level >= 5)
     check("country_2",   gs.current_country >= 1)
     check("country_5",   gs.current_country >= 4)
     check("country_10",  gs.current_country >= 9)
@@ -177,6 +196,18 @@ func note_prestige(count: int) -> void:
     check("prestige_1", count >= 1)
     check("prestige_3", count >= 3)
     check("prestige_5", count >= 5)
+
+func note_ads(total: int) -> void:
+    check("ads_10",  total >= 10)
+    check("ads_50",  total >= 50)
+    check("ads_100", total >= 100)
+
+func note_golden() -> void:
+    counters["golden_total"] = int(counters.get("golden_total", 0)) + 1
+    check("golden_10", int(counters["golden_total"]) >= 10)
+
+func note_ascendant(level: int) -> void:
+    check("ascendant_5", level >= 5)
 
 func check(id: String, condition: bool) -> void:
     if not condition: return
@@ -229,6 +260,13 @@ func progress(id: String) -> Vector2:
         "event_25":        return Vector2(float(counters.get("events_total", 0)), 25.0)
         "gems_100":        return Vector2(float(gs.gems), 100.0)
         "gems_spent_500":  return Vector2(float(counters.get("gems_spent", 0)), 500.0)
+        "ads_10":          return Vector2(float(gs.ads_watched), 10.0)
+        "ads_50":          return Vector2(float(gs.ads_watched), 50.0)
+        "ads_100":         return Vector2(float(gs.ads_watched), 100.0)
+        "golden_10":       return Vector2(float(counters.get("golden_total", 0)), 10.0)
+        "combo_100":       return Vector2(float(gs.combo), 100.0)
+        "skins_all":       return Vector2(float(gs.skins_owned.size()), float(Economy.SKINS.size()))
+        "ascendant_5":     return Vector2(float(Prestige.ascendant_level if has_node("/root/Prestige") else 0), 5.0)
         "influence_50":    return Vector2(float(gs.influence_total), 50.0)
         "prestige_1":      return Vector2(float(Prestige.count), 1.0)
         "prestige_3":      return Vector2(float(Prestige.count), 3.0)

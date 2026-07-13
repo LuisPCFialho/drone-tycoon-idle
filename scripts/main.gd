@@ -1,5 +1,5 @@
 extends Control
-## Main scene — Drone Tycoon: Sky Fleet  v1.32.0
+## Main scene — Drone Tycoon: Sky Fleet  v1.33.0
 
 const NAV_H  := 132.0
 const TABS_H := 532.0
@@ -32,6 +32,10 @@ var _vip_badge: PanelContainer
 var _event_row: HBoxContainer
 var _event_icon: TextureRect
 var _event_name_lbl: Label
+var _event_time_lbl: Label
+var _next_obj_lbl: Label
+var _achieve_count_lbl: Label
+var _claim_all_btn: Button
 var _event_timer_bar: Panel
 var _ribbon_fill: Panel
 var _disp_credits := 0.0
@@ -128,6 +132,9 @@ func _ready() -> void:
 	# ad-loyalty: count every rewarded ad; celebrate the gem mega-bonus every 10th
 	Ads.reward_granted.connect(_on_ad_watched)
 	GameState.ad_milestone.connect(_show_mega_bonus)
+	GameState.ad_daily_bonus.connect(func(n: int, g: int):
+		Fx.chip_pop(_gems_chip, UITheme.CYAN)
+		_toast(tr("Bónus diário: %d anúncios → +%d gemas!") % [n, g], UITheme.CYAN, "ic_gems"))
 
 	var loaded := SaveSystem.load_game()
 	_disp_credits = GameState.credits
@@ -315,6 +322,11 @@ func _build_hud() -> void:
 	# Row 1: stat chips (credits prominent)
 	var r1 := HBoxContainer.new(); r1.add_theme_constant_override("separation", 6); v.add_child(r1)
 	var c1 := _chip("ic_credits", UITheme.GOLD, 30, 26, true); _credits_lbl = c1["label"]; _credits_chip = c1["root"]; r1.add_child(c1["root"])
+	# tap credits to see the exact numbers + full income multiplier breakdown
+	_credits_chip.gui_input.connect(func(e: InputEvent):
+		if (e is InputEventMouseButton and (e as InputEventMouseButton).pressed) \
+				or (e is InputEventScreenTouch and (e as InputEventScreenTouch).pressed):
+			_show_income_breakdown())
 	var c2 := _chip("ic_gems", UITheme.CYAN, 22); _gems_lbl = c2["label"]; _gems_chip = c2["root"]; r1.add_child(c2["root"])
 	var c3 := _chip("ic_prestige", UITheme.VIOLET, 21); _infl_lbl = c3["label"]; _infl_chip = c3["root"]; r1.add_child(c3["root"])
 	_vip_badge = PanelContainer.new(); _vip_badge.add_theme_stylebox_override("panel", UITheme.solid(UITheme.GOLD, 14))
@@ -367,6 +379,10 @@ func _build_hud() -> void:
 	_ribbon_fill.anchor_top = 0; _ribbon_fill.anchor_bottom = 1
 	_ribbon_fill.add_theme_stylebox_override("panel", UITheme.prog_fill(UITheme.ACCENT))
 	ribbon_bg.add_child(_ribbon_fill)
+	# labels what the ribbon is filling toward, so the goal is never a mystery
+	_next_obj_lbl = _lbl("", 13, UITheme.MUTED)
+	_next_obj_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_next_obj_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL; v.add_child(_next_obj_lbl)
 
 	# Row 4: event banner (hidden when no event)
 	_event_row = HBoxContainer.new(); _event_row.add_theme_constant_override("separation", 8)
@@ -375,6 +391,10 @@ func _build_hud() -> void:
 	var ev_info := VBoxContainer.new(); ev_info.size_flags_horizontal = Control.SIZE_EXPAND_FILL; _event_row.add_child(ev_info)
 	_event_name_lbl = Label.new(); _event_name_lbl.add_theme_font_size_override("font_size", 17)
 	_event_name_lbl.add_theme_font_override("font", UITheme.font("Bold")); ev_info.add_child(_event_name_lbl)
+	_event_time_lbl = Label.new(); _event_time_lbl.add_theme_font_size_override("font_size", 20)
+	_event_time_lbl.add_theme_font_override("font", UITheme.font("Bold"))
+	_event_time_lbl.add_theme_color_override("font_color", UITheme.INK)
+	_event_time_lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER; _event_row.add_child(_event_time_lbl)
 	var bar_bg := Panel.new(); bar_bg.custom_minimum_size = Vector2(0, 8)
 	bar_bg.add_theme_stylebox_override("panel", UITheme.prog_bg()); ev_info.add_child(bar_bg)
 	_event_timer_bar = Panel.new()
@@ -799,6 +819,8 @@ func _build_legado_tab() -> ScrollContainer:
 	_rebuild_prestige_shop()
 
 	v.add_child(_section("Conquistas", UITheme.GOLD, "ic_achieve"))
+	_achieve_count_lbl = _lbl("", 15, UITheme.MUTED)
+	v.add_child(_achieve_count_lbl)
 	_achieve_box = VBoxContainer.new()
 	_achieve_box.add_theme_constant_override("separation", 11)
 	v.add_child(_achieve_box)
@@ -826,8 +848,13 @@ func _rebuild_achievements() -> void:
 	for c in _achieve_box.get_children():
 		c.queue_free()
 	_achieve_cells.clear(); _achieve_prog_fills.clear(); _achieve_prog_lbls.clear()
-	for id: String in Achievements.DEFS:
+	# unlocked ones sink to the bottom so the still-to-earn goals lead the list
+	var ids: Array = Achievements.DEFS.keys()
+	ids.sort_custom(func(a, b): return int(Achievements.is_done(a)) < int(Achievements.is_done(b)))
+	for id: String in ids:
 		_achieve_box.add_child(_make_achievement_row(id))
+	if _achieve_count_lbl != null and is_instance_valid(_achieve_count_lbl):
+		_achieve_count_lbl.text = tr("Desbloqueadas: %d / %d") % [Achievements.done_count(), Achievements.total_count()]
 
 func _make_prestige_shop_row(id: String) -> PanelContainer:
 	var item: Dictionary = Prestige.SHOP[id]
@@ -1255,6 +1282,10 @@ func _process(delta: float) -> void:
 		_combo_lbl.text = "×%.2f" % cm
 		if cm > _prev_combo_mult:
 			Fx.chip_pop(_combo_chip, UITheme.ORANGE)
+			var ctier: float = clampf((cm - 1.0) / 2.0, 0.0, 1.0)
+			Audio.play("tap", 1.0 + ctier * 0.6, -3.0)
+			Fx.vibrate(int(20.0 + ctier * 40.0))
+			Fx.ring_pulse(_combo_chip, _combo_chip.size * 0.5, UITheme.ORANGE, 1.6)
 	else:
 		_combo_chip.visible = false
 	_prev_combo_mult = cm
@@ -1272,6 +1303,7 @@ func _process(delta: float) -> void:
 
 	# progress ribbon (HUD): % to next city or expand
 	_set_fill(_ribbon_fill, _unlock_progress())
+	_next_obj_lbl.text = _next_objective_text()
 	# cities tab progress bar + the city button/detail block below both need
 	# this — computed once here instead of twice per frame (each call does
 	# two pow() calls internally)
@@ -1280,6 +1312,7 @@ func _process(delta: float) -> void:
 
 	if Events.is_active():
 		_set_fill(_event_timer_bar, Events.time_pct())
+		_event_time_lbl.text = Fmt.duration(Events.time_left())
 
 	if GameState.buy_mode != _prev_buy_mode:
 		for m in _mode_btns:
@@ -1475,6 +1508,19 @@ func _set_fill(p: Panel, pct: float) -> void:
 	p.anchor_right = pct
 	p.visible = pct >= 0.02
 
+## Short label for what the HUD ribbon is filling toward (never a mystery).
+func _next_objective_text() -> String:
+	if not GameState.all_cities_unlocked():
+		var ci := GameState.current_country
+		var cities := Economy.country_cities(ci)
+		var nx: int = clampi(GameState.cities_unlocked + 1, 1, cities.size() - 1)
+		return tr("Próximo: abrir %s") % cities[nx]["name"]
+	if GameState.expand_cost() >= 0.0:
+		return tr("Próximo: expandir para %s") % Economy.country_name(GameState.current_country + 1)
+	if Prestige.can_prestige():
+		return tr("Próximo: Prestige disponível!")
+	return tr("Próximo: 5.º país para Prestige")
+
 func _unlock_progress() -> float:
 	var cc := GameState.next_city_cost()
 	if cc < 0.0:
@@ -1597,6 +1643,8 @@ func _on_achievement(id: String) -> void:
 	var def: Dictionary = Achievements.DEFS.get(id, {})
 	_toast(str(def.get("name", id)) + " desbloqueada!", UITheme.GOLD, "ic_achieve")
 	Fx.screen_flash(self, UITheme.GOLD, 0.08)
+	if _achieve_count_lbl != null and is_instance_valid(_achieve_count_lbl):
+		_achieve_count_lbl.text = tr("Desbloqueadas: %d / %d") % [Achievements.done_count(), Achievements.total_count()]
 	if _achieve_cells.has(id):
 		_achieve_cells[id].add_theme_stylebox_override("panel", UITheme.achievement_card(true))
 	if _achieve_prog_fills.has(id):
@@ -1682,6 +1730,10 @@ func _show_daily_popup() -> void:
 	hd.add_child(_icon("ic_daily", 30)); hd.add_child(_lbl("Recompensa Diária", 30, UITheme.GOLD)); box.add_child(hd)
 	var streak_info := _lbl(tr("Streak: %d dias consecutivos!") % Daily.streak, 19, UITheme.INK)
 	streak_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; box.add_child(streak_info)
+	var bonus_pct := int(round((Daily._streak_scale() - 1.0) * 100.0))
+	if bonus_pct > 0:
+		var sb := _lbl(tr("Bónus de sequência: +%d%%") % bonus_pct, 15, UITheme.GREEN)
+		sb.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; box.add_child(sb)
 
 	var grid := GridContainer.new(); grid.columns = 7
 	grid.add_theme_constant_override("h_separation", 5); grid.add_theme_constant_override("v_separation", 5); box.add_child(grid)
@@ -1708,6 +1760,22 @@ func _show_daily_popup() -> void:
 		grid.add_child(day_box)
 
 	if Daily.pending:
+		if Daily.pending_restore:
+			# missed one day — offer an ad to keep the streak alive before it breaks
+			var rs := Button.new(); rs.text = tr("Restaurar sequência (anúncio)")
+			rs.icon = _opt_tex("ic_ad"); rs.expand_icon = true; rs.add_theme_constant_override("icon_max_width", 24)
+			rs.add_theme_font_size_override("font_size", 18); rs.custom_minimum_size = Vector2(0, 62)
+			rs.add_theme_stylebox_override("normal", UITheme.solid(UITheme.GREEN.darkened(0.05)))
+			rs.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+			rs.pressed.connect(func():
+				layer.queue_free()
+				Ads.show_rewarded("streak_restore", func():
+					Daily.restore_streak()
+					_toast(tr("Sequência restaurada!"), UITheme.GREEN, "ic_daily")
+					_show_daily_popup())
+			)
+			box.add_child(rs)
+			Fx.shimmer(rs, UITheme.GREEN, true)
 		var claim_btn := _wide_btn(UITheme.GOLD.darkened(0.06))
 		claim_btn.text = "Receber Recompensa!"
 		claim_btn.add_theme_color_override("font_color", Color(0.12, 0.08, 0.0))
@@ -1777,6 +1845,7 @@ func _show_mega_bonus(count: int, gems: int) -> void:
 ## or watch a rewarded ad for the (randomized-at-spawn) big reward.
 func _show_bonus_popup(ad_reward: Dictionary) -> void:
 	Audio.play("unlock", 1.0, -3.0)   # matches the volume city-unlock already uses for this sample
+	if has_node("/root/Achievements"): Achievements.note_golden()
 	var layer := _overlay(); var box := _popup_box(layer, UITheme.GOLD)
 	var hd := HBoxContainer.new(); hd.alignment = BoxContainer.ALIGNMENT_CENTER; hd.add_theme_constant_override("separation", 8)
 	hd.add_child(_icon("ic_drone", 30)); hd.add_child(_lbl("Drone Bónus!", 30, UITheme.GOLD)); box.add_child(hd)
@@ -1806,6 +1875,13 @@ func _show_bonus_popup(ad_reward: Dictionary) -> void:
 		layer.queue_free()
 		Ads.show_rewarded("bonus_drone", func():
 			match kind:
+				"jackpot":
+					GameState.grant_gems(120)
+					GameState.grant_cash_minutes(30.0)
+					_disp_credits = GameState.credits
+					Fx.chip_pop(_credits_chip, UITheme.GOLD); Fx.chip_pop(_gems_chip, UITheme.CYAN)
+					Fx.confetti(self, Vector2(size.x * 0.5, size.y * 0.4), 40, [UITheme.VIOLET, UITheme.GOLD, UITheme.CYAN])
+					_toast(tr("JACKPOT! +120 Gemas + 30 min!"), UITheme.VIOLET, "ic_gems")
 				"boost":
 					GameState.earn_boost_timer = 600.0
 					_toast(tr("Lucros ×2 durante 10 min!"), UITheme.GREEN, "ic_boost")
@@ -1939,6 +2015,54 @@ func _notification(what: int) -> void:
 		# whichever language was active the last time readiness flipped.
 		if _prestige_info_lbl != null and is_instance_valid(_prestige_info_lbl):
 			_prestige_info_lbl.text = ""
+	elif what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		# Android hardware/gesture Back: close the top popup instead of killing
+		# the app; if nothing is open, ask before quitting. (Was unhandled — Back
+		# instantly closed the whole game, even with a popup open.)
+		var top: CanvasLayer = null
+		for c in get_children():
+			if c is CanvasLayer and (c as CanvasLayer).layer == 150:
+				top = c
+		if top != null:
+			top.queue_free()
+		else:
+			_show_exit_confirm()
+
+## Tap-credits panel: exact (grouped) credits + income/s, and every multiplier
+## feeding income so the player can see WHY their rate is what it is.
+func _show_income_breakdown() -> void:
+	var layer := _overlay(); var box := _popup_box(layer, UITheme.GOLD)
+	var hd := HBoxContainer.new(); hd.alignment = BoxContainer.ALIGNMENT_CENTER; hd.add_theme_constant_override("separation", 8)
+	hd.add_child(_icon("ic_credits", 30)); hd.add_child(_lbl(tr("Resumo de Rendimento"), 26, UITheme.INK)); box.add_child(hd)
+	var cr := _lbl(tr("Créditos: %s") % Fmt.long(GameState.credits), 17, UITheme.GOLD)
+	cr.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; box.add_child(cr)
+	var inc := _lbl(tr("Rendimento: %s/s") % Fmt.long(GameState.income_per_sec()), 17, UITheme.GREEN)
+	inc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; box.add_child(inc)
+	box.add_child(_section("Multiplicadores", UITheme.ACCENT))
+	var total := 1.0
+	for row: Array in GameState.mult_breakdown():
+		var val: float = float(row[1])
+		if val <= 1.001:
+			continue   # only show factors actually contributing
+		total *= val
+		var rr := HBoxContainer.new(); rr.add_theme_constant_override("separation", 6); box.add_child(rr)
+		var nm := _lbl(str(row[0]), 16, UITheme.MUTED); nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL; rr.add_child(nm)
+		var vl := _lbl("×%.2f" % val, 16, UITheme.INK); vl.add_theme_font_override("font", UITheme.font("Bold")); rr.add_child(vl)
+	var tot := _lbl(tr("Total ×%.2f") % total, 19, UITheme.GOLD)
+	tot.add_theme_font_override("font", UITheme.font("Bold"))
+	tot.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; box.add_child(tot)
+	box.add_child(_close_btn(layer))
+
+## "Sair do jogo?" — only reached via the Android Back button with no popup open.
+func _show_exit_confirm() -> void:
+	var layer := _overlay(); var box := _popup_box(layer, UITheme.ACCENT)
+	var hd := HBoxContainer.new(); hd.alignment = BoxContainer.ALIGNMENT_CENTER; hd.add_theme_constant_override("separation", 8)
+	hd.add_child(_icon("ic_gear", 30)); hd.add_child(_lbl(tr("Sair do jogo?"), 28, UITheme.INK)); box.add_child(hd)
+	var yes := _wide_btn(UITheme.RED.darkened(0.2)); yes.text = tr("Sair")
+	yes.custom_minimum_size = Vector2(0, 66)
+	yes.pressed.connect(func(): get_tree().quit())
+	box.add_child(yes)
+	box.add_child(_close_btn(layer))
 
 func _settings_stats_text() -> String:
 	return tr("Entregas: %s  ·  Ganhos: %s\nRendimento: %s/s  ·  Combo: %d\nDrones: %d  ·  Países: %d/%d  ·  Streak: %dd\nPrestige: %d  ·  Conquistas: %d/%d") % [
@@ -1947,10 +2071,39 @@ func _settings_stats_text() -> String:
 		GameState.drones, GameState.current_country + 1, Economy.num_countries(), Daily.streak,
 		Prestige.count, Achievements.done_count(), Achievements.total_count()]
 
+## Re-openable help: the four onboarding tips + a currency glossary (the welcome
+## popup only ever shows once, so returning players had no in-app reference).
+func _show_help() -> void:
+	var layer := _overlay(); var box := _popup_box(layer, UITheme.ACCENT)
+	var hd := HBoxContainer.new(); hd.alignment = BoxContainer.ALIGNMENT_CENTER; hd.add_theme_constant_override("separation", 8)
+	hd.add_child(_icon("ic_drone", 30)); hd.add_child(_lbl(tr("Como jogar"), 28, UITheme.INK)); box.add_child(hd)
+	var tips: Array = [
+		["ic_drone", UITheme.ACCENT, "Compra drones e melhorias", "Cada entrega gera créditos automaticamente."],
+		["ic_city", UITheme.GOLD, "Expande pelo mundo", "Abre cidades e países para multiplicar os lucros."],
+		["ic_gems", UITheme.CYAN, "Gemas só de anúncios e ofertas", "Vê anúncios ou compra-as — nunca se ganham a jogar."],
+		["ic_prestige", UITheme.PRESTIGE, "Faz Prestige para bónus permanentes", "Reinicia com multiplicadores que ficam para sempre."],
+	]
+	for t: Array in tips:
+		var row := HBoxContainer.new(); row.add_theme_constant_override("separation", 10); box.add_child(row)
+		row.add_child(_icon_badge(str(t[0]), t[1], 40, 20))
+		var tv := VBoxContainer.new(); tv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		tv.size_flags_vertical = Control.SIZE_SHRINK_CENTER; tv.add_theme_constant_override("separation", 1); row.add_child(tv)
+		var tt := _lbl(tr(str(t[2])), 15, UITheme.INK); tt.add_theme_font_override("font", UITheme.font("Bold")); tv.add_child(tt)
+		var td := _lbl(tr(str(t[3])), 13, UITheme.MUTED); td.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; tv.add_child(td)
+	box.add_child(_section("Moedas", UITheme.GOLD))
+	var gloss := _lbl(tr("Créditos: gastas em drones, cidades e países.\nGemas: moeda premium (anúncios/ofertas) para a Loja.\nInfluência: ganha ao expandir país; compra Talentos.\nGemas de Prestígio: ganhas ao fazer Prestige; Loja de Legado."), 14, UITheme.MUTED)
+	gloss.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; box.add_child(gloss)
+	box.add_child(_close_btn(layer))
+
 func _show_settings() -> void:
 	var layer := _overlay(); var box := _popup_box(layer, UITheme.ACCENT)
 	var hd := HBoxContainer.new(); hd.alignment = BoxContainer.ALIGNMENT_CENTER; hd.add_theme_constant_override("separation", 10)
 	hd.add_child(_icon("ic_gear", 38)); hd.add_child(_lbl("Definições", 32, UITheme.INK)); box.add_child(hd)
+
+	var help_btn := _wide_btn(UITheme.ACCENT.darkened(0.1)); help_btn.text = tr("Como jogar / Ajuda")
+	help_btn.custom_minimum_size = Vector2(0, 60)
+	help_btn.pressed.connect(func(): Fx.press(help_btn); _show_help())
+	box.add_child(help_btn)
 
 	box.add_child(_settings_toggle("Som activado", not Audio.muted,
 		func(on): Audio.muted = not on; SaveSystem.save_game()))
@@ -2094,6 +2247,15 @@ func _show_offline_popup(amount: float, seconds: float) -> void:
 	big.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	big.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	box.add_child(big)
+	# rate + cap line; if the away time hit the cap, upsell VIP (the strongest,
+	# most natural moment for it — "you left money on the table")
+	var cap := GameState.offline_cap()
+	var rate_lbl := _lbl(tr("Taxa: %s/s · limite offline %s") % [Fmt.short(GameState.income_per_sec()), Fmt.duration(cap)], 14, UITheme.MUTED)
+	rate_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; box.add_child(rate_lbl)
+	if seconds >= cap - 1.0 and not GameState.is_vip_active():
+		var up := _lbl(tr("Limite atingido! O VIP estende o offline para 24 h."), 15, UITheme.GOLD)
+		up.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; up.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		box.add_child(up)
 	if not Fx.reduce_motion:
 		var ctw := create_tween()
 		# guard: a player who taps "Recolher" before the 0.9s count-up finishes
@@ -2142,6 +2304,13 @@ func _overlay() -> CanvasLayer:
 	var layer := CanvasLayer.new(); layer.layer = 150
 	var dim := ColorRect.new(); dim.color = Color(0.02, 0.03, 0.07, 0.0)
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	# tap the dimmed area (outside the panel) to dismiss — a mobile expectation.
+	# Canceling a destructive confirm this way is harmless (nothing fires on close).
+	dim.gui_input.connect(func(e: InputEvent):
+		var tapped: bool = (e is InputEventMouseButton and (e as InputEventMouseButton).pressed) \
+			or (e is InputEventScreenTouch and (e as InputEventScreenTouch).pressed)
+		if tapped and is_instance_valid(layer):
+			layer.queue_free())
 	layer.add_child(dim); add_child(layer)
 	var tw := create_tween()
 	tw.tween_property(dim, "color:a", 0.78, 0.2)
@@ -2299,6 +2468,14 @@ func _update_contracts() -> void:
 			var gl := _mission_gem_lbls[i] as Label
 			gl.visible = rg > 0
 			gl.text = "+%d" % rg
+	# show "claim all" only when 2+ contracts are claimable at once
+	if _claim_all_btn != null and is_instance_valid(_claim_all_btn):
+		var ready_n := 0
+		for i in range(Contracts.slots.size()):
+			var s: Dictionary = Contracts.slots[i]
+			if s.get("ready", false) and not s.get("claimed", false):
+				ready_n += 1
+		_claim_all_btn.visible = ready_n >= 2
 
 # ── Missions tab ──────────────────────────────────────────────────────────────────
 
@@ -2306,6 +2483,23 @@ func _build_missions_tab() -> ScrollContainer:
 	var r := _scroll("Missões"); var v: VBoxContainer = r[1]
 	var info := _lbl("Completa missões para ganhar créditos e gemas bónus.", 16, UITheme.MUTED)
 	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; v.add_child(info)
+
+	# "Reivindicar tudo" — appears when ≥2 slots are claimable (common after an
+	# offline session); no more tapping each one individually
+	_claim_all_btn = _wide_btn(UITheme.GREEN)
+	_claim_all_btn.text = tr("Reivindicar tudo")
+	_claim_all_btn.custom_minimum_size = Vector2(0, 58)
+	_claim_all_btn.visible = false
+	_claim_all_btn.pressed.connect(func():
+		if not _can_tap(): return
+		Fx.press(_claim_all_btn)
+		for i in range(Contracts.SLOT_COUNT):
+			var s: Dictionary = Contracts.slots[i] if i < Contracts.slots.size() else {}
+			if s.get("ready", false) and not s.get("claimed", false):
+				Contracts.claim(i)
+		_disp_credits = GameState.credits
+		Fx.chip_pop(_credits_chip, UITheme.GOLD))
+	v.add_child(_claim_all_btn)
 
 	for i in range(Contracts.SLOT_COUNT):
 		if i == 3:

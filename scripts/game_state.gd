@@ -49,18 +49,39 @@ var ads_watched := 0            # lifetime rewarded ads; every MEGA_BONUS_EVERY 
 # doesn't disturb the cost/income balance.
 const MEGA_BONUS_EVERY := 10
 const MEGA_BONUS_GEMS := 100
+# small escalating gems for watching a few ads WITHIN one day — an opt-in daily
+# ad habit on top of the lifetime mega-bonus. Gems are ads/IAP/daily-only, so an
+# ad-triggered gem drop is on-brand and never touches the credit economy.
+const AD_DAILY_BONUS := {3: 15, 6: 25, 10: 40}
+var ads_today := 0
+var ads_today_key := ""
 
 signal ad_milestone(count: int, gems_awarded: int)
+signal ad_daily_bonus(count: int, gems_awarded: int)
 
-## Called once per completed rewarded ad (see Ads.reward_granted). Increments the
-## lifetime counter and, on every MEGA_BONUS_EVERY-th ad, awards a gem mega-bonus
-## and emits ad_milestone for the UI celebration.
+## Called once per completed rewarded ad (see Ads.reward_granted). Advances the
+## lifetime + daily counters; awards the every-10 mega-bonus and the per-day
+## escalating bonus, emitting signals for the UI celebration/toast.
 func register_ad_watched() -> void:
 	ads_watched += 1
+	var key := _today_key()
+	if key != ads_today_key:
+		ads_today_key = key
+		ads_today = 0
+	ads_today += 1
+	if has_node("/root/Achievements"): Achievements.note_ads(ads_watched)
 	if ads_watched % MEGA_BONUS_EVERY == 0:
 		gems += MEGA_BONUS_GEMS
 		ad_milestone.emit(ads_watched, MEGA_BONUS_GEMS)
+	elif AD_DAILY_BONUS.has(ads_today):
+		var g: int = int(AD_DAILY_BONUS[ads_today])
+		gems += g
+		ad_daily_bonus.emit(ads_today, g)
 	SaveSystem.save_game()
+
+func _today_key() -> String:
+	var d := Time.get_datetime_dict_from_system()
+	return "%04d-%02d-%02d" % [int(d["year"]), int(d["month"]), int(d["day"])]
 
 # --- transient ---
 var earn_boost_mult := 2.0
@@ -106,11 +127,35 @@ func global_mult() -> float:
 		* (1.0 + 0.25 * float(gem_boost)) * Billing.perm_mult * vip_mult() \
 		* Events.current_mult * Prestige.effective_mult() * skin_collection_mult()
 
+## [label, factor] rows for the income-breakdown popup — every multiplier that
+## feeds income, so players can see WHY their rate is what it is. Order roughly
+## by typical impact.
+func mult_breakdown() -> Array:
+	return [
+		["Prestígio", Prestige.effective_mult()],
+		["VIP", vip_mult()],
+		["Evento", Events.current_mult],
+		["Combo", combo_mult()],
+		["Influência", 1.0 + 0.05 * float(influence)],
+		["Talento Global", 1.0 + 0.06 * float(talents["global"])],
+		["Núcleo de Lucro", 1.0 + 0.25 * float(gem_boost)],
+		["Skins", skin_collection_mult()],
+		["Rede de Rotas", route_mult()],
+		["Velocidade", speed_factor()],
+		["Compra permanente", Billing.perm_mult],
+	]
+
 func route_mult() -> float:
 	var rl := int(levels.get("routes", 0))
 	return 1.0 + 0.025 * float(rl) * Economy.milestone_mult(rl)
 
 func combo_mult() -> float:
+	# High tiers (150+) are a pure ACTIVE-PLAY skill reward: combo decays in ~10s,
+	# so sustaining a 150/250/500 chain demands constant attention — it never
+	# affects idle/offline income, so it can't inflate the tuned economy.
+	if combo >= 500: return 3.0
+	if combo >= 250: return 2.5
+	if combo >= 150: return 2.25
 	if combo >= 100: return 2.0
 	if combo >= 50:  return 1.5
 	if combo >= 25:  return 1.25
@@ -124,7 +169,10 @@ func cost_scale() -> float:
 
 func offline_cap() -> float:
 	var prestige_extra: float = OFFLINE_CAP_BASE * Prestige.extra_offline_pct()
-	return OFFLINE_CAP_BASE + prestige_extra + (79200.0 if is_vip_active() else 0.0)
+	# +30 min of offline cap per prestige (up to +4h at count 8) — a structural
+	# reward for prestiging that veterans feel, beyond the flat multiplier.
+	var count_extra: float = float(mini(Prestige.count, 8)) * 1800.0
+	return OFFLINE_CAP_BASE + prestige_extra + count_extra + (79200.0 if is_vip_active() else 0.0)
 
 ## `cities` optional: pass the already-fetched array to avoid re-reading
 ## Economy.country_cities() (a fresh Dictionary lookup) for every route/drone
@@ -477,7 +525,7 @@ func to_dict() -> Dictionary:
 		"combo_window_bonus": combo_window_bonus,
 		"skins_owned": skins_owned.duplicate(), "skin_active": skin_active,
 		"vip_temp_until": vip_temp_until, "auto_manager": auto_manager,
-		"ads_watched": ads_watched,
+		"ads_watched": ads_watched, "ads_today": ads_today, "ads_today_key": ads_today_key,
 	}
 
 func from_dict(d: Dictionary) -> void:
@@ -506,6 +554,8 @@ func from_dict(d: Dictionary) -> void:
 	vip_temp_until = int(d.get("vip_temp_until", 0))
 	auto_manager = bool(d.get("auto_manager", false))
 	ads_watched = int(d.get("ads_watched", 0))
+	ads_today = int(d.get("ads_today", 0))
+	ads_today_key = str(d.get("ads_today_key", ""))
 	skins_owned = ["classic"]
 	for s in Array(d.get("skins_owned", [])):
 		var sid: String = str(s)

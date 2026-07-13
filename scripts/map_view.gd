@@ -44,6 +44,9 @@ var _aurora: Texture2D
 var _bbox := Rect2(0, 0, 1, 1)
 var _outline_cache: PackedVector2Array = PackedVector2Array()
 var _bbox_ci := -1   # country the bbox/outline was last computed for (self-heals on load)
+var _deliver_seen := 0   # throttles beacon flashes to perceived drone-arrival rate
+var _tap_start_pos := Vector2.ZERO
+var _tap_start_ms := 0
 var _cam_tween: Tween
 
 # --- landmass geometry cache (rebuilt only when zoom/pan actually change) ---
@@ -225,7 +228,12 @@ func _seed_ambiance() -> void:
 		})
 
 func _process(delta: float) -> void:
-	_t += delta
+	# reduce_motion freezes the ambient sine clock (caustics / scanline / star
+	# twinkle / coastline breathe / aurora drift / drone bob) — a stated
+	# accessibility constraint the map previously ignored. Functional motion
+	# (drone travel via vt, pops, flashes, camera, self-heal) keeps running.
+	if not Fx.reduce_motion:
+		_t += delta
 	# Self-heal a stale country: loading a save sets GameState.current_country
 	# but emits no country_changed, so the bbox/outline cached at _ready() (for
 	# Portugal, country 0) would keep drawing the wrong map until the next
@@ -245,11 +253,12 @@ func _process(delta: float) -> void:
 			p["y"] = float(p["y"]) - 34.0 * delta
 			if float(p["life"]) <= 0.0:
 				_pops.remove_at(i)
-	# drift clouds (wrap)
-	for c in _clouds:
-		c["x"] += c["speed"] * delta
-		if c["x"] > 1.25:
-			c["x"] = -0.25
+	# drift clouds (wrap) — ambient, frozen under reduce_motion
+	if not Fx.reduce_motion:
+		for c in _clouds:
+			c["x"] += c["speed"] * delta
+			if c["x"] > 1.25:
+				c["x"] = -0.25
 	# decay delivery flashes (mutate in place; skip when nothing is flashing)
 	if not _flash.is_empty():
 		var expired: Array = []
@@ -315,6 +324,12 @@ func reveal_country() -> void:
 
 # ---------------------------------------------------------------- input (zoom/pan)
 
+## Cheap tap feedback so the play area feels responsive between purchases.
+func _tap_ripple(pos: Vector2) -> void:
+	Audio.play("tap")
+	if not Fx.reduce_motion:
+		Fx.ring_pulse(self, pos, Color(SKY.r, SKY.g, SKY.b, 0.9), 1.5)
+
 func _gui_input(event: InputEvent) -> void:
 	# any interaction cancels the cinematic camera — the player always wins
 	if _cam_tween != null and _cam_tween.is_valid():
@@ -324,10 +339,18 @@ func _gui_input(event: InputEvent) -> void:
 		var t := event as InputEventScreenTouch
 		if t.pressed:
 			_touches[t.index] = t.position
+			if _touches.size() == 1:
+				_tap_start_pos = t.position
+				_tap_start_ms = Time.get_ticks_msec()
 		else:
+			var was_single: bool = _touches.size() == 1
 			_touches.erase(t.index)
 			if _touches.size() < 2:
 				_last_pinch = 0.0
+			# quick tap (no drag, no pinch) → responsive ripple + tick
+			if was_single and t.position.distance_to(_tap_start_pos) < 14.0 \
+					and Time.get_ticks_msec() - _tap_start_ms < 250:
+				_tap_ripple(t.position)
 	elif event is InputEventScreenDrag:
 		var d := event as InputEventScreenDrag
 		_touches[d.index] = d.position
@@ -506,9 +529,13 @@ func _draw_landmass(outline: PackedVector2Array) -> void:
 		_lm_pts = PackedVector2Array()
 		for p in outline:
 			_lm_pts.append(_proj(p))
+		# shadow offset scales with zoom so the landmass "lift" reads consistently
+		# instead of collapsing when pinch-zoomed in (the outline scales, so must
+		# its shadow). sqrt keeps the ramp subtle.
+		var sh_off := Vector2(5, 9) * sqrt(zoom)
 		_lm_sh = PackedVector2Array()
 		for q in _lm_pts:
-			_lm_sh.append(q + Vector2(5, 9))
+			_lm_sh.append(q + sh_off)
 		_lm_closed = _lm_pts.duplicate()
 		_lm_closed.append(_lm_pts[0])
 		var ctr := _centroid(_lm_pts)
@@ -798,6 +825,14 @@ func _cost_chip(p: Vector2, cost: String) -> void:
 # ---------------------------------------------------------------- pops / fx
 
 func _on_delivered(amount: float, city_index: int) -> void:
+	# Deliveries fire on the fast economic cadence, but drones move on the 20x
+	# slower cosmetic clock — so at high income the beacons strobe far faster
+	# than any drone visibly arrives (reads as random flicker). Throttle to
+	# ~1-in-(drones/4) so flashes/pops roughly match perceived arrivals.
+	_deliver_seen += 1
+	var step: int = clampi(GameState.drones / 4, 1, 10)
+	if _deliver_seen % step != 0:
+		return
 	var cities := Economy.country_cities(GameState.current_country)
 	var idx: int = clampi(city_index, 0, cities.size() - 1)
 	var p := _proj(Vector2(cities[idx]["x"], cities[idx]["y"]))

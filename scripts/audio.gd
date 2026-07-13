@@ -1,7 +1,7 @@
 extends Node
 ## Procedural SFX v2 — 44.1 kHz, richer synthesis.
 ## Music: royalty-free tracks by Eric Matyas (www.soundimage.org)
-## Public API: play(name), tick(), muted, to_dict/from_dict.
+## Public API: play(name), duck(), muted, to_dict/from_dict.
 
 const RATE := 44100
 const MUSIC_FILES: Array[String] = [
@@ -21,6 +21,15 @@ var _next      := 0
 var _ambient: AudioStreamPlayer
 var _music_tracks: Array = []
 var _music_idx: int = 0
+# music fade-in on track change + side-chain duck under one-shot stingers. Both
+# feed muted_music_db() (the per-frame volume authority in _process) so they need
+# no separate tween that would fight it.
+var _fadein_until := 0
+var _fadein_dur := 1200
+var _duck_until := 0
+var _duck_hold := 400
+var _duck_db := 0.0
+var _last_deliver_snd := 0   # ms; throttles the delivery blip so it never spams
 
 func _ready() -> void:
 	_build_streams()
@@ -80,8 +89,9 @@ func _start_music() -> void:
 		_ambient.volume_db = muted_music_db()
 		_ambient.play()
 		return
-	_music_idx = 0
-	_ambient.stream = _music_tracks[0]
+	_music_idx = randi() % _music_tracks.size()   # vary the opening track each launch
+	_ambient.stream = _music_tracks[_music_idx]
+	_fadein_until = Time.get_ticks_msec() + _fadein_dur
 	_ambient.volume_db = muted_music_db()
 	_ambient.play()
 
@@ -89,6 +99,7 @@ func _on_music_finished() -> void:
 	if _music_tracks.is_empty(): return
 	_music_idx = (_music_idx + 1) % _music_tracks.size()
 	_ambient.stream = _music_tracks[_music_idx]
+	_fadein_until = Time.get_ticks_msec() + _fadein_dur   # ease the new track in (no hard slam)
 	_ambient.volume_db = muted_music_db()
 	if not muted:
 		_ambient.play()
@@ -99,13 +110,36 @@ func _process(_delta: float) -> void:
 		_ambient.volume_db = muted_music_db()
 
 func _on_delivered(_amount: float, _hub: int) -> void:
-	pass  # delivery sound removed — too repetitive at high drone counts
+	# Subtle, THROTTLED delivery blip (full removal made the core loop feel dead).
+	# Rate-limited to ~1 per 280ms and quiet, so it reads as gentle activity, not
+	# the machine-gun spam that got it removed at high drone counts.
+	if muted: return
+	var now := Time.get_ticks_msec()
+	if now - _last_deliver_snd < 280: return
+	_last_deliver_snd = now
+	play("tap", randf_range(1.15, 1.35), -16.0)
 
 func play(name: String, pitch := 1.0, vol_db := 0.0) -> void:
 	if muted or not _streams.has(name): return
+	# micro-detune repeated short SFX so rapid taps/buys don't sound robotic
+	if pitch == 1.0 and name in ["tap", "buy", "whoosh"]:
+		pitch = randf_range(0.97, 1.03)
+	# big celebratory stingers duck the music so they punch through
+	if name == "prestige":
+		duck(-9.0, 900)
+	elif name in ["milestone", "achieve"]:
+		duck(-6.0, 500)
 	var p := _players[_next]; _next = (_next + 1) % _players.size()
 	p.stream = _streams[name]; p.pitch_scale = clampf(pitch, 0.5, 2.0)
 	p.volume_db = vol_db + sfx_vol; p.play()
+
+## Side-chain duck: briefly lower the music bed so a one-shot stinger (prestige,
+## milestone) punches through, then ramp back. Feeds muted_music_db() so the
+## per-frame volume write in _process applies it — no separate tween needed.
+func duck(amount_db := -8.0, hold_ms := 500) -> void:
+	_duck_db = amount_db
+	_duck_hold = hold_ms
+	_duck_until = Time.get_ticks_msec() + hold_ms
 
 func set_music_vol(db: float) -> void:
 	music_vol = clampf(db, -40.0, 0.0)
@@ -115,7 +149,18 @@ func set_sfx_vol(db: float) -> void:
 	sfx_vol = clampf(db, -20.0, 6.0)
 
 func muted_music_db() -> float:
-	return -80.0 if muted else music_vol
+	if muted:
+		return -80.0
+	var v := music_vol
+	var now := Time.get_ticks_msec()
+	# fade-in on track change (ramps -40 → music_vol)
+	if now < _fadein_until:
+		var p := 1.0 - float(_fadein_until - now) / float(_fadein_dur)
+		v = lerpf(-40.0, music_vol, clampf(p, 0.0, 1.0))
+	# stinger duck (snaps down, ramps back toward 0 over the hold)
+	if now < _duck_until:
+		v += _duck_db * (float(_duck_until - now) / float(maxi(1, _duck_hold)))
+	return v
 
 # ── Oscillators ──────────────────────────────────────────────────────────────────
 

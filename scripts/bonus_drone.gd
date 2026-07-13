@@ -39,6 +39,10 @@ var _from_left := true
 var _fly_y := 0.5        # normalized y within the band
 var _ad_reward: Dictionary = {}
 var _trail_hist: Array = []
+var _is_jackpot := false
+var _glow_base_a := 0.55
+const JACKPOT_CHANCE := 0.12
+const JACKPOT_REWARD := {"kind": "jackpot", "label": "JACKPOT! +120 Gemas + 30 min"}
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -113,14 +117,27 @@ func _process(delta: float) -> void:
 	if _t >= 1.0:
 		_end_flight()
 		return
+	var rm: bool = Fx.reduce_motion
 	var w := size.x
 	var x := lerpf(-110.0, w + 110.0, _t) if _from_left else lerpf(w + 110.0, -110.0, _t)
 	var bh := band_bottom - band_top
-	var y := band_top + _fly_y * bh + sin(_clock * 2.2) * 18.0
+	var bob := (sin(_clock * 2.2) * 18.0) if not rm else 0.0
+	var y := band_top + _fly_y * bh + bob
 	_btn.position = Vector2(x - 48.0, y - 48.0)
-	var pulse := 1.0 + 0.10 * sin(_clock * 5.0)
-	_glow.scale = Vector2(pulse, pulse)
-	_icon.rotation = 0.10 * sin(_clock * 3.0) * (1.0 if _from_left else -1.0)
+	if not rm:
+		var pulse := 1.0 + 0.10 * sin(_clock * 5.0)
+		_glow.scale = Vector2(pulse, pulse)
+		_icon.rotation = 0.10 * sin(_clock * 3.0) * (1.0 if _from_left else -1.0)
+		# ground shadow fades as the drone bobs "up" — depth cue
+		var lift := sin(_clock * 2.2) * 0.5 + 0.5
+		_shadow.modulate.a = 0.28 * (1.0 - 0.45 * lift)
+	# exit telegraph: blink the glow in the last ~1.5s so a distracted player
+	# sees the reward is about to leave (steady fade if reduce_motion)
+	if _t > 0.82:
+		var blink: float = 1.0 if rm else (0.45 + 0.55 * abs(sin(_clock * 12.0)))
+		_glow.modulate.a = _glow_base_a * blink
+	else:
+		_glow.modulate.a = _glow_base_a
 	# squash/stretch takeoff/landing ease, matching map_view.gd's fleet-drone
 	# dsc envelope — was an instant visible/full-scale pop with no ease at all
 	var edge := minf(_t, 1.0 - _t)
@@ -148,10 +165,22 @@ func _spawn() -> void:
 	_trail_hist.clear()
 	_from_left = randf() < 0.5
 	_fly_y = randf_range(0.18, 0.72)
-	var pick: Dictionary = AD_REWARDS[randi() % AD_REWARDS.size()]
-	_ad_reward = pick
+	# rare JACKPOT variant — distinct violet-gold tint + bigger reward, the
+	# surprise-and-delight spike that a flat 3-reward table never delivered
+	_is_jackpot = randf() < JACKPOT_CHANCE
+	if _is_jackpot:
+		_ad_reward = JACKPOT_REWARD
+		_glow.modulate = Color(0.72, 0.5, 1.0, 0.85); _glow_base_a = 0.85
+		_icon.modulate = Color(1.0, 0.95, 0.7)
+	else:
+		_ad_reward = AD_REWARDS[randi() % AD_REWARDS.size()]
+		_glow.modulate = Color(1.0, 0.82, 0.25, 0.55); _glow_base_a = 0.55
+		_icon.modulate = Color(1, 1, 1)
 	_btn.visible = true
-	Fx.chip_pop(_btn, Color(1.0, 0.85, 0.3))   # satisfying appear bounce, matching the rest of the game's juice
+	Fx.chip_pop(_btn, Color(0.8, 0.6, 1.0) if _is_jackpot else Color(1.0, 0.85, 0.3))
+	# audible + haptic cue so the main opt-in ad hook isn't missed peripherally
+	Audio.play("daily", 1.35 if _is_jackpot else 1.15, -2.0)
+	Fx.vibrate(45 if _is_jackpot else 30)
 	set_process(true)
 
 func _end_flight() -> void:
