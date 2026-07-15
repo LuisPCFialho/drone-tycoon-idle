@@ -1,9 +1,17 @@
 # AdMob & Google Play Billing — integration status
 
-**Status: wired to real SDKs, running on Google's public TEST ad/app IDs.**
-The game currently shows real AdMob test ads and can process real (test-mode)
-Play Billing purchases. Nothing further needs to change in `scripts/ads.gd` or
-`scripts/billing.gd` — going live is a matter of configuration, not code.
+**Status: LIVE AdMob IDs configured, GDPR/UMP consent integrated (v1.34.0).**
+`scripts/ads.gd` now runs on the real AdMob account
+(App `ca-app-pub-6257070310596477~3020396061`, Rewarded unit
+`ca-app-pub-6257070310596477/2848051384`, `is_real = true`) and requests the
+UMP consent form at startup for EEA/UK/CH users. Billing still needs its Play
+Console products created (see below). Nothing further changes in code.
+
+> **Testing safety:** with `is_real = true`, tapping your own served ads is a
+> bannable AdMob policy violation. Add your device's hashed ID to the
+> `test_device_hashed_ids` array (find it in logcat on first ad request:
+> `Use RequestConfiguration.Builder().setTestDeviceIds(...)`) before testing on
+> a physical device, so you get test creatives instead of live ones.
 
 Both `scripts/ads.gd` and `scripts/billing.gd` auto-detect their environment:
 on an Android build with the native plugin singleton present, they drive the

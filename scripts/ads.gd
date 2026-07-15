@@ -27,8 +27,14 @@ func _ready() -> void:
 	if OS.get_name() != "Android" or not Engine.has_singleton("AdmobPlugin"):
 		return   # editor / desktop / plugin not baked into this build: fake path only
 	_admob = Admob.new()
-	_admob.is_real = false   # flip to true in docs/ADMOB_INTEGRATION.md once real IDs exist
+	_admob.is_real = true   # real AdMob account configured (App/unit IDs below)
+	_admob.android_real_rewarded_id = "ca-app-pub-6257070310596477/2848051384"
 	add_child(_admob)
+	# GDPR/UMP consent — request info at startup and show the form when Google
+	# says one is required (EEA/UK/CH). Ads still init in parallel; they serve
+	# non-personalized until consent is granted. Never soft-locks gameplay.
+	_admob.consent_info_updated.connect(_on_consent_updated)
+	_admob.consent_form_loaded.connect(func(): _admob.show_consent_form())
 	_admob.initialization_completed.connect(func(_status): _load_next_ad())
 	_admob.rewarded_ad_loaded.connect(func(_info, _resp): _ad_ready = true)
 	_admob.rewarded_ad_failed_to_load.connect(func(_info, _err): _ad_ready = false; _retry_load_later())
@@ -42,6 +48,13 @@ func _ready() -> void:
 	_admob.rewarded_ad_dismissed_full_screen_content.connect(func(_info): _grant_pending(); _load_next_ad())
 	_admob.rewarded_ad_failed_to_show_full_screen_content.connect(func(_info, _err): _grant_pending())
 	_admob.initialize()
+	_admob.update_consent_info()   # kicks off the UMP flow (no-op outside EEA/UK/CH)
+
+func _on_consent_updated() -> void:
+	# A form is only available/required in consent regions; load it (which then
+	# auto-shows via the consent_form_loaded handler). Elsewhere this is a no-op.
+	if _admob != null and _admob.is_consent_form_available():
+		_admob.load_consent_form()
 
 func _load_next_ad() -> void:
 	_ad_ready = false

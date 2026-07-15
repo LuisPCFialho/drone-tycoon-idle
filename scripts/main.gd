@@ -1,5 +1,5 @@
 extends Control
-## Main scene — Drone Tycoon: Sky Fleet  v1.33.0
+## Main scene — Drone Tycoon: Sky Fleet  v1.34.0
 
 const NAV_H  := 132.0
 const TABS_H := 532.0
