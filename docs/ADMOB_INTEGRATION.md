@@ -1,11 +1,26 @@
 # AdMob & Google Play Billing — integration status
 
-**Status: LIVE AdMob IDs configured, GDPR/UMP consent integrated (v1.34.0).**
-`scripts/ads.gd` now runs on the real AdMob account
-(App `ca-app-pub-6257070310596477~3020396061`, Rewarded unit
-`ca-app-pub-6257070310596477/2848051384`, `is_real = true`) and requests the
-UMP consent form at startup for EEA/UK/CH users. Billing still needs its Play
-Console products created (see below). Nothing further changes in code.
+> ## ⚠️ BLOCKED: the AdMob IDs below are STALE — do not ship this build
+>
+> The package was renamed `com.lpcf.dronetycoon` → **`com.bananaware.dronetycoon`**
+> (2026-07-16, before first publish — the last moment it could change). AdMob
+> ties an App ID to a package and **the package cannot be edited on an existing
+> AdMob app**, so both IDs below now belong to an app that no longer exists here.
+>
+> **To unblock:** create a NEW app in AdMob for `com.bananaware.dronetycoon`,
+> create a new **Rewarded** ad unit, then replace:
+> 1. `addons/AdmobPlugin/android_export.cfg` → `[Release] app_id=` (new App ID)
+> 2. `scripts/ads.gd` → `_admob.android_real_rewarded_id` (new unit ID)
+>
+> Until then a release build would carry an App ID that does not match its own
+> package: ads will not serve. Delete/ignore the old `com.lpcf.dronetycoon`
+> AdMob app.
+
+**Status: GDPR/UMP consent integrated (v1.34.0); real AdMob IDs pending the
+package rename above.** `scripts/ads.gd` drives the real SDK (`is_real = true`)
+and requests the UMP consent form at startup for EEA/UK/CH users. Billing still
+needs its Play Console products created (see below). Nothing further changes in
+code — only the two ID values.
 
 > **Testing safety:** with `is_real = true`, tapping your own served ads is a
 > bannable AdMob policy violation. Add your device's hashed ID to the
@@ -57,7 +72,7 @@ automated from here.
 ### 1. Create a real AdMob account & app
 
 1. Sign up at [admob.google.com](https://admob.google.com), add the app
-   (package `com.lpcf.dronetycoon`), get your real **App ID**
+   (package `com.bananaware.dronetycoon`), get your real **App ID**
    (`ca-app-pub-XXXXXXXXXXXXXXXX~YYYYYYYYYY`).
 2. Create ad units — you only need **Rewarded** for this game (the gem/mission
    ad placements). Get the real ad unit ID

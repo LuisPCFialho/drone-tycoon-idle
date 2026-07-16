@@ -2172,7 +2172,7 @@ func _show_settings() -> void:
 	# silently went stale across releases (showed an old version in Settings
 	# even when the APK itself was current).
 	var app_ver := str(ProjectSettings.get_setting("application/config/version", "?"))
-	var ver := _lbl("Drone Tycoon: Sky Fleet · v%s · © 2026 LPCF" % app_ver, 15, UITheme.MUTED)
+	var ver := _lbl("Drone Tycoon: Sky Fleet · v%s · © 2026 BananaWare" % app_ver, 15, UITheme.MUTED)
 	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	ver.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	box.add_child(ver)
