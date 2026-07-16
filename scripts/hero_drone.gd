@@ -105,16 +105,22 @@ func _build(root: Node3D) -> void:
 	# central hull (flattened, tapered look via scaled box + a top canopy)
 	var body := BoxMesh.new(); body.size = Vector3(1.15, 0.30, 0.86)
 	_add(root, body, hull, Vector3.ZERO)
-	var canopy := SphereMesh.new(); canopy.radius = 0.34; canopy.height = 0.5
+	# Primitive meshes default to radial_segments=64/rings=32 — ~4k tris each. At a
+	# 260px render target that detail is invisible, but generating + uploading 15
+	# VBOs of it lands right on the boot intro. ~48k tris -> ~4k, same silhouette.
+	var canopy := SphereMesh.new(); canopy.radial_segments = 16; canopy.rings = 8
+	canopy.radius = 0.34; canopy.height = 0.5
 	_add(root, canopy, glass, Vector3(0.0, 0.12, -0.04), Vector3.ZERO, Vector3(1.0, 0.55, 1.0))
 	# accent spine strip along the top
 	var spine := BoxMesh.new(); spine.size = Vector3(0.9, 0.05, 0.10)
 	_add(root, spine, trim, Vector3(0.0, 0.17, 0.22))
 
 	# camera gimbal ball underneath (front)
-	var gimbal := SphereMesh.new(); gimbal.radius = 0.17
+	var gimbal := SphereMesh.new(); gimbal.radial_segments = 14; gimbal.rings = 7
+	gimbal.radius = 0.17
 	_add(root, gimbal, dark, Vector3(0.0, -0.18, -0.28))
-	var lens := SphereMesh.new(); lens.radius = 0.09
+	var lens := SphereMesh.new(); lens.radial_segments = 10; lens.rings = 5
+	lens.radius = 0.09
 	_add(root, lens, _mat(Color.BLACK, 0.1, 0.05, CYAN_COL, 3.0), Vector3(0.0, -0.20, -0.40))
 
 	# four arms + motors + rotors + glowing rings, at 45° corners
@@ -122,25 +128,27 @@ func _build(root: Node3D) -> void:
 		Vector3(-0.86, 0.0, -0.66), Vector3(0.86, 0.0, -0.66),
 		Vector3(-0.86, 0.0,  0.66), Vector3(0.86, 0.0,  0.66),
 	]
+	# identical for all 4 rotors — built once instead of 4 duplicate materials
+	var blade_mat := _mat(Color(0.8, 0.9, 1.0), 0.1, 0.2, CYAN_COL, 0.8)
+	blade_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	blade_mat.albedo_color.a = 0.5
 	for c: Vector3 in corners:
 		# arm (thin box pointing from hull to the motor)
 		var arm := BoxMesh.new(); arm.size = Vector3(c.length() * 2.0, 0.09, 0.15)
 		var yaw := rad_to_deg(atan2(c.x, c.z))
 		_add(root, arm, hull, c * 0.5, Vector3(0.0, yaw, 0.0))
 		# motor pod
-		var motor := CylinderMesh.new()
+		var motor := CylinderMesh.new(); motor.radial_segments = 12
 		motor.top_radius = 0.15; motor.bottom_radius = 0.17; motor.height = 0.22
 		_add(root, motor, dark, c + Vector3(0.0, 0.02, 0.0))
 		# glowing rotor ring (torus)
-		var ring := TorusMesh.new(); ring.inner_radius = 0.44; ring.outer_radius = 0.52
+		var ring := TorusMesh.new(); ring.rings = 16; ring.ring_segments = 8
+		ring.inner_radius = 0.44; ring.outer_radius = 0.52
 		var ringcol := TRIM_COL if c.z < 0.0 else CYAN_COL
 		_add(root, ring, _mat(ringcol, 0.3, 0.3, ringcol, 2.6), c + Vector3(0.0, 0.16, 0.0))
 		# spinning rotor: a pivot with two crossed translucent blades
 		var pivot := Node3D.new(); pivot.position = c + Vector3(0.0, 0.18, 0.0)
 		root.add_child(pivot)
-		var blade_mat := _mat(Color(0.8, 0.9, 1.0), 0.1, 0.2, CYAN_COL, 0.8)
-		blade_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		blade_mat.albedo_color.a = 0.5
 		for a in [0.0, 90.0]:
 			var blade := BoxMesh.new(); blade.size = Vector3(0.92, 0.015, 0.10)
 			_add(pivot, blade, blade_mat, Vector3.ZERO, Vector3(0.0, a, 0.0))
@@ -150,7 +158,8 @@ func _build(root: Node3D) -> void:
 	var green := _mat(Color.BLACK, 0.1, 0.1, Color(0.2, 1.0, 0.45), 3.0)
 	var red := _mat(Color.BLACK, 0.1, 0.1, Color(1.0, 0.3, 0.32), 3.0)
 	for c: Vector3 in corners:
-		var led := SphereMesh.new(); led.radius = 0.05
+		var led := SphereMesh.new(); led.radial_segments = 6; led.rings = 3
+		led.radius = 0.05
 		_add(root, led, green if c.z < 0.0 else red, c + Vector3(0.0, -0.02, 0.0))
 
 	root.rotation_degrees = Vector3(12.0, -22.0, 0.0)   # pleasing 3/4 rest pose

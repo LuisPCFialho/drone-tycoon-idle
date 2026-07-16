@@ -245,6 +245,14 @@ func _process(delta: float) -> void:
 	# hoisted out of the per-drone loop: identical for every drone this frame
 	# (was recomputed up to MAX_VISUAL_DRONES=16 times/frame otherwise)
 	var sf := speed_factor()
+	# Same hoist, and the one _delivery_const_mult()'s own docstring asks for:
+	# income_per_sec() already does this, _process() didn't and still paid ~7 pow()
+	# + a Time syscall per delivery. Late game every drone delivers every frame, so
+	# that was up to 16x/frame. Bit-exact: nothing this reads (levels, talents,
+	# influence, gem_boost, country, event/prestige mults) is mutated in the loop.
+	# combo_mult() stays INSIDE — combo increments per delivery and each must see
+	# its own value, so hoisting THAT would move the tuned economy.
+	var const_mult := _delivery_const_mult()
 	var cities := Economy.country_cities(current_country)
 	for v in vdrones:
 		var d := _route_dist(int(v["route"]), cities)
@@ -254,7 +262,7 @@ func _process(delta: float) -> void:
 			v["t"] = 1.0; v["dir"] = -1
 			combo += 1
 			_combo_decay_t = COMBO_DECAY + combo_window_bonus
-			var amt := per_delivery(d) * fs * boost * combo_mult()
+			var amt := const_mult * (1.0 + d) * fs * boost * combo_mult()
 			credits += amt; total_earned += amt; total_deliveries += 1
 			delivered.emit(amt, 1 + int(v["route"]))
 		elif v["t"] <= 0.0:

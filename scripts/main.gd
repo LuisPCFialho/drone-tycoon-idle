@@ -1,5 +1,5 @@
 extends Control
-## Main scene — Drone Tycoon: Sky Fleet  v1.35.0
+## Main scene — Drone Tycoon: Sky Fleet  v1.36.0
 
 const NAV_H  := 132.0
 const TABS_H := 532.0
@@ -45,6 +45,9 @@ var _prev_gems := 0
 var _prev_infl := 0
 var _prev_combo_mult := 1.0
 var _prev_buy_mode := -999
+var _prev_income_col := Color(0, 0, 0, 0)   # dirty-check for the income label's colour override
+var _nav_sb_on: StyleBox                    # the only two nav styleboxes, built once in _switch_tab
+var _nav_sb_off: StyleBox
 
 # Tab widgets
 var _rows := {}
@@ -558,6 +561,9 @@ func _make_nav_btn(icon_name: String, label_text: String, idx: int) -> Button:
 	return btn
 
 func _switch_tab(i: int) -> void:
+	if _nav_sb_on == null:
+		_nav_sb_on = UITheme.nav_item(true)
+		_nav_sb_off = UITheme.nav_item(false)
 	for j in _pages.size():
 		_pages[j].visible = (j == i)
 	for j in _nav_btns.size():
@@ -565,21 +571,34 @@ func _switch_tab(i: int) -> void:
 		var btn: Button = _nav_btns[j]
 		var ic: TextureRect = _nav_icons[j]
 		var lbl: Label = _nav_labels[j]
-		btn.add_theme_stylebox_override("normal", UITheme.nav_item(active))
-		btn.add_theme_stylebox_override("hover",  UITheme.nav_item(active))
+		# nav_item() only ever yields two distinct boxes, so build them once rather
+		# than allocating 12 fresh StyleBoxFlats per tab switch. Sharing one across
+		# Controls is safe — the override connects CONNECT_REFERENCE_COUNTED.
+		var sb: StyleBox = _nav_sb_on if active else _nav_sb_off
+		btn.add_theme_stylebox_override("normal", sb)
+		btn.add_theme_stylebox_override("hover",  sb)
 		ic.modulate = UITheme.ACCENT if active else UITheme.MUTED
 		lbl.add_theme_color_override("font_color", UITheme.INK if active else UITheme.MUTED)
 		var target := 1.12 if active else 1.0
 		ic.pivot_offset = ic.size * 0.5
-		var tw := ic.create_tween()
-		tw.tween_property(ic, "scale", Vector2(target, target), 0.16).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		# _stagger_in() honours reduce_motion but these nav tweens never did —
+		# snap instead of animating (also skips 6 Tweens per switch).
+		if Fx.reduce_motion:
+			ic.scale = Vector2(target, target)
+		else:
+			var tw := ic.create_tween()
+			tw.tween_property(ic, "scale", Vector2(target, target), 0.16).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	if _nav_ind != null:
 		var bw := get_viewport_rect().size.x / 6.0
 		var pad := bw * 0.22
-		var tw2 := _nav_ind.create_tween()
-		tw2.set_parallel(true)
-		tw2.tween_property(_nav_ind, "offset_left", bw * float(i) + pad, 0.22).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-		tw2.tween_property(_nav_ind, "offset_right", bw * float(i + 1) - pad, 0.22).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		if Fx.reduce_motion:
+			_nav_ind.offset_left = bw * float(i) + pad
+			_nav_ind.offset_right = bw * float(i + 1) - pad
+		else:
+			var tw2 := _nav_ind.create_tween()
+			tw2.set_parallel(true)
+			tw2.tween_property(_nav_ind, "offset_left", bw * float(i) + pad, 0.22).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+			tw2.tween_property(_nav_ind, "offset_right", bw * float(i + 1) - pad, 0.22).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	_stagger_in(i)
 
 ## Fade-cascade the rows of the newly shown tab.
@@ -1052,20 +1071,30 @@ func _wide_btn(color: Color) -> Button:
 ## Buy button with cached normal/affordable styleboxes (no per-frame alloc).
 func _buy_btn(color: Color) -> Button:
 	var b := _wide_btn(color)
-	b.set_meta("sb_n", UITheme.action_btn(color))
+	b.set_meta("sb_n", b.get_theme_stylebox("normal"))   # _wide_btn already built this exact box
 	b.set_meta("sb_a", UITheme.action_btn_affordable(color))
 	return b
 
+## Caching the styleboxes (above) killed the per-frame ALLOC, but applying one is
+## the expensive half: Control has no equality check, so add_theme_stylebox_override
+## fires NOTIFICATION_THEME_CHANGED every call -> Button::_shape() re-runs full text
+## shaping + update_minimum_size() cascades a re-sort up the container chain. With
+## 22 call sites in _process that was ~1320 forced re-shapes/sec for a state that
+## flips a few times a minute. Only touch the button when it actually flipped.
 func _afford(b: Button, affordable: bool) -> void:
 	if not is_instance_valid(b): return
-	var sb: StyleBox = b.get_meta("sb_a") if affordable else b.get_meta("sb_n")
-	b.add_theme_stylebox_override("normal", sb)
+	if b.get_meta("sb_state", -1) == int(affordable): return   # -1 => first call always applies
+	b.set_meta("sb_state", int(affordable))
+	b.add_theme_stylebox_override("normal", b.get_meta("sb_a") if affordable else b.get_meta("sb_n"))
 
 ## Short "ready in Xm Ys" suffix for a not-yet-affordable cost's detail text —
-## "" when already affordable or income is ~0 (see GameState.eta_seconds()).
-func _eta_suffix(cost: float) -> String:
-	var s := GameState.eta_seconds(cost)
-	return ("  ·  " + tr("pronto em %s") % Fmt.duration(s)) if s > 0.0 else ""
+## "" when already affordable or income is ~0. Takes the frame's already-computed
+## income: going through GameState.eta_seconds() re-derived income_per_sec() (an
+## O(cities) loop + ~7 pow()) per call, 2-3x per frame, on top of the one _process
+## already holds. Same arithmetic as eta_seconds(), same branches.
+func _eta_suffix(cost: float, ips: float) -> String:
+	if cost <= GameState.credits or ips <= 0.01: return ""
+	return "  ·  " + tr("pronto em %s") % Fmt.duration((cost - GameState.credits) / ips)
 
 ## Compact horizontal purchase row: [icon] [title+detail] [buy button].
 ## Returns {card, title, detail, right(HBox for the action button)}.
@@ -1275,7 +1304,13 @@ func _process(delta: float) -> void:
 
 	var ips := GameState.income_per_sec()
 	_income_lbl.text = "+" + Fmt.short(ips) + "/s"
-	_income_lbl.add_theme_color_override("font_color", Events.color() if Events.is_active() else UITheme.GREEN)
+	# Same no-equality-check trap as _afford(): re-applying the override fires
+	# NOTIFICATION_THEME_CHANGED (font_dirty + an extra min-size push) every frame
+	# for a colour that only moves when an event starts/ends, minutes apart.
+	var inc_col: Color = Events.color() if Events.is_active() else UITheme.GREEN
+	if inc_col != _prev_income_col:
+		_prev_income_col = inc_col
+		_income_lbl.add_theme_color_override("font_color", inc_col)
 	var cm := GameState.combo_mult()
 	if cm > 1.0:
 		_combo_chip.visible = true
@@ -1327,7 +1362,7 @@ func _process(delta: float) -> void:
 	_drone_btn.text     = (("×%d   " % dc) if GameState.buy_mode != 1 else "") + Fmt.short(dcost)
 	_drone_btn.disabled = GameState.credits < dcost
 	_afford(_drone_btn, not _drone_btn.disabled)
-	_drone_detail.text  = (tr("Tens %d drones") % GameState.drones) + _eta_suffix(dcost)
+	_drone_detail.text  = (tr("Tens %d drones") % GameState.drones) + _eta_suffix(dcost, ips)
 
 	var vip_on := GameState.is_vip_active()
 	_auto_mgr_toggle.visible = vip_on
@@ -1433,7 +1468,7 @@ func _process(delta: float) -> void:
 		_city_btn.text = Fmt.short(next_city_cost); _city_btn.disabled = GameState.credits < next_city_cost
 		var ci := GameState.current_country; var cities := Economy.country_cities(ci)
 		var nx: int = clampi(GameState.cities_unlocked + 1, 1, cities.size() - 1)
-		_city_detail.text = (tr("Próxima: %s") % cities[nx]["name"]) + _eta_suffix(next_city_cost)
+		_city_detail.text = (tr("Próxima: %s") % cities[nx]["name"]) + _eta_suffix(next_city_cost, ips)
 	_afford(_city_btn, not _city_btn.disabled and next_city_cost >= 0.0)
 	var ec := GameState.expand_cost()
 	if ec < 0.0:
@@ -1444,7 +1479,7 @@ func _process(delta: float) -> void:
 		_expand_detail.text = tr("Abre todas as cidades de %s primeiro.") % Economy.country_name(GameState.current_country)
 	else:
 		_expand_btn.text = Fmt.short(ec); _expand_btn.disabled = GameState.credits < ec
-		_expand_detail.text = (tr("Seguinte: %s (+Influência)") % Economy.country_name(GameState.current_country + 1)) + _eta_suffix(ec)
+		_expand_detail.text = (tr("Seguinte: %s (+Influência)") % Economy.country_name(GameState.current_country + 1)) + _eta_suffix(ec, ips)
 	_afford(_expand_btn, not _expand_btn.disabled and ec >= 0.0 and GameState.all_cities_unlocked())
 
 	# prestige button — pgems_on_next_prestige() depends on current_country
@@ -2373,11 +2408,20 @@ func _icon_badge(icon_name: String, accent: Color, sz := 44, icon_sz := 22) -> P
 	p.add_child(_icon(icon_name, icon_sz))
 	return p
 
+## Cached: the per-frame skins loop calls this ~5x/frame, and every call was 2
+## String concats + ResourceLoader.exists() (mutex + path validation) + load()
+## (LoadToken alloc + loader mutex even on a cache hit) — all discarded, since
+## Button::set_icon early-outs on an identical texture. Art is static. Mirrors
+## the same cache Fx._tex already uses.
+var _tex_cache := {}
+
 func _opt_tex(n: String) -> Texture2D:
+	if _tex_cache.has(n):
+		return _tex_cache[n] as Texture2D
 	var path := ART + n + ".png"
-	if ResourceLoader.exists(path):
-		return load(path)
-	return null
+	var tex: Texture2D = load(path) if ResourceLoader.exists(path) else null
+	_tex_cache[n] = tex
+	return tex
 
 # ── Floating delivery earnings ────────────────────────────────────────────────────
 

@@ -39,8 +39,11 @@ const GEM_SHOP := {
 ## Gives every upgrade purchase a visible next goal (idle-genre staple).
 const MILESTONE_STEP := 25
 
+## `level / MILESTONE_STEP` is integer division, so this is always 2^(small int).
+## The shift is bit-identical to pow() here (IEEE-754 represents 2^n exactly for
+## integer n) and skips a libm call made ~4x per _delivery_const_mult() pass.
 func milestone_mult(level: int) -> float:
-	return pow(2.0, float(level / MILESTONE_STEP))
+	return float(1 << (level / MILESTONE_STEP))
 
 ## Drone skins — permanent cosmetics bought with gems, visible on the map.
 ## Each owned premium skin also adds +2% global profits (collection bonus).

@@ -77,6 +77,10 @@ var counters := {
 
 # Transient
 var _session_start_ms: int = 0
+# latches for the two _process conditions that stay true forever once met, so we
+# stop re-scanning unlocked_ids every frame to rediscover them
+var _session_30m_done := false
+var _skins_all_done := false
 
 func _ready() -> void:
     _session_start_ms = Time.get_ticks_msec()
@@ -86,12 +90,19 @@ func _ready() -> void:
         GameState.country_changed.connect(_on_country)
 
 func _process(_delta: float) -> void:
-    var session_ms := Time.get_ticks_msec() - _session_start_ms
-    if session_ms >= 30 * 60 * 1000:
-        check("session_30m", true)
+    # Once past 30 min this condition is permanently true, so it re-entered check()
+    # every frame forever — and check()'s `id in unlocked_ids` guard is a linear
+    # string scan over up to 45 entries. Latch it instead.
+    if not _session_30m_done:
+        if Time.get_ticks_msec() - _session_start_ms >= 30 * 60 * 1000:
+            _session_30m_done = true
+            check("session_30m", true)
     if has_node("/root/GameState"):
         check("combo_100", GameState.combo >= 100)
-        check("skins_all", GameState.skins_owned.size() >= Economy.SKINS.size())
+        # same permanently-true-once-earned scan as above
+        if not _skins_all_done and GameState.skins_owned.size() >= Economy.SKINS.size():
+            _skins_all_done = true
+            check("skins_all", true)
 
 func _on_delivered(_amount: float, _city: int) -> void:
     counters["deliveries"] = int(counters.get("deliveries", 0)) + 1

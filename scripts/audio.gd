@@ -19,7 +19,11 @@ var _streams := {}
 var _players: Array[AudioStreamPlayer] = []
 var _next      := 0
 var _ambient: AudioStreamPlayer
-var _music_tracks: Array = []
+## Paths, not streams: AudioStreamMP3 holds the whole compressed file in RAM, so
+## preloading all 5 tracks cost ~12.5 MB resident to play one at a time. Loaded
+## on demand at track boundaries (_start_music / _on_music_finished), where a
+## crossfade already hides the load.
+var _music_paths: Array[String] = []
 var _music_idx: int = 0
 # music fade-in on track change + side-chain duck under one-shot stingers. Both
 # feed muted_music_db() (the per-frame volume authority in _process) so they need
@@ -30,6 +34,7 @@ var _duck_until := 0
 var _duck_hold := 400
 var _duck_db := 0.0
 var _last_deliver_snd := 0   # ms; throttles the delivery blip so it never spams
+var _last_music_db := INF    # dirty-check for the per-frame volume write in _process
 
 func _ready() -> void:
 	_build_streams()
@@ -49,6 +54,8 @@ func _ready() -> void:
 		Daily.reward_claimed.connect(func(_idx): play("daily", 1.0, 0.0))
 	if has_node("/root/Prestige"):
 		Prestige.prestiged.connect(func(_n): play("prestige", 0.95, 2.0))
+	# off the boot critical path — the intro tweens get the frame, not synthesis
+	get_tree().create_timer(2.0).timeout.connect(_build_deferred)
 
 func _build_streams() -> void:
 	_streams["tap"]         = _click(0.020, 0.18)
@@ -57,11 +64,21 @@ func _build_streams() -> void:
 	_streams["unlock"]      = _arp([392.0, 493.88, 587.33, 783.99], 0.072, 0.24)
 	_streams["milestone"]   = _arp([261.63, 329.63, 392.00, 493.88, 523.25], 0.095, 0.26)
 	_streams["achieve"]     = _jingle([587.33, 698.46, 880.00, 1046.5], 0.080, 0.25)
-	_streams["prestige"]    = _fanfare([261.63, 329.63, 392.00, 523.25, 659.26], 0.75, 0.28)
+	# "prestige" is synthesized in _build_deferred() — see _ready()
 	_streams["daily"]       = _arp([329.63, 415.30, 493.88, 622.25], 0.085, 0.24)
 	_streams["event_start"] = _alert(0.22, 0.22)
 	_streams["error"]       = _buzz(0.14, 0.18)
-	_streams["pad"]         = _pad(8.0)  # fallback if MP3s unavailable
+	# "pad" (the no-MP3 fallback bed) is built lazily in _start_music(): it is 8s
+	# of PCM = 2.1M interpreted sin() calls and 689 KB, and the branch that uses
+	# it never runs while the 5 MP3s ship in the PCK.
+
+## Synthesis that must exist eventually but not at boot. _fanfare() alone was
+## ~49 ms desktop (est. 200-400 ms on a low-end phone) of the boot intro, for a
+## sting that cannot fire until the player prestiges hours later. Deferred to an
+## idle frame rather than made lazy-on-first-play, which would hitch exactly at
+## the prestige celebration. play() no-ops on a missing key until this lands.
+func _build_deferred() -> void:
+	_streams["prestige"] = _fanfare([261.63, 329.63, 392.00, 523.25, 659.26], 0.75, 0.28)
 
 ## Load an imported MP3 track. MUST use load() (not FileAccess) so it works in
 ## exported builds: Godot strips the raw .mp3 source from the PCK and only ships
@@ -77,37 +94,54 @@ func _load_mp3(path: String) -> AudioStream:
 		(res as AudioStreamMP3).loop = false
 	return res as AudioStream
 
+## Only checks existence — loading is deferred to the track boundary. Keeping the
+## ResourceLoader.exists() filter here preserves the old "missing MP3s -> pad
+## fallback" behaviour without paying for 5 decoders up front.
 func _build_music() -> void:
 	for path in MUSIC_FILES:
-		var st := _load_mp3(path)
-		if st != null:
-			_music_tracks.append(st)
+		if ResourceLoader.exists(path):
+			_music_paths.append(path)
+
+## Assigning _ambient.stream drops the previous track's last reference, so only
+## one AudioStreamMP3 is ever resident.
+func _play_track(idx: int) -> void:
+	var st := _load_mp3(_music_paths[idx])
+	if st == null:
+		return
+	_ambient.stream = st
+	_fadein_until = Time.get_ticks_msec() + _fadein_dur
+	_ambient.volume_db = muted_music_db()
 
 func _start_music() -> void:
-	if _music_tracks.is_empty():
+	if _music_paths.is_empty():
+		if not _streams.has("pad"):
+			_streams["pad"] = _pad(8.0)   # built only if we truly have no music
 		_ambient.stream = _streams["pad"]
 		_ambient.volume_db = muted_music_db()
 		_ambient.play()
 		return
-	_music_idx = randi() % _music_tracks.size()   # vary the opening track each launch
-	_ambient.stream = _music_tracks[_music_idx]
-	_fadein_until = Time.get_ticks_msec() + _fadein_dur
-	_ambient.volume_db = muted_music_db()
+	_music_idx = randi() % _music_paths.size()   # vary the opening track each launch
+	_play_track(_music_idx)
 	_ambient.play()
 
 func _on_music_finished() -> void:
-	if _music_tracks.is_empty(): return
-	_music_idx = (_music_idx + 1) % _music_tracks.size()
-	_ambient.stream = _music_tracks[_music_idx]
-	_fadein_until = Time.get_ticks_msec() + _fadein_dur   # ease the new track in (no hard slam)
-	_ambient.volume_db = muted_music_db()
+	if _music_paths.is_empty(): return
+	_music_idx = (_music_idx + 1) % _music_paths.size()
+	_play_track(_music_idx)   # ease the new track in (no hard slam)
 	if not muted:
 		_ambient.play()
 
 func _process(_delta: float) -> void:
 	if _ambient:
-		_ambient.stream_paused = muted
-		_ambient.volume_db = muted_music_db()
+		# Both are AudioServer writes; muted_music_db() only moves during a
+		# fade-in/duck window, so skip the write on the ~99% of frames where
+		# nothing changed instead of poking the server 120x/sec.
+		if _ambient.stream_paused != muted:
+			_ambient.stream_paused = muted
+		var db := muted_music_db()
+		if not is_equal_approx(db, _last_music_db):
+			_last_music_db = db
+			_ambient.volume_db = db
 
 func _on_delivered(_amount: float, _hub: int) -> void:
 	# Subtle, THROTTLED delivery blip (full removal made the core loop feel dead).

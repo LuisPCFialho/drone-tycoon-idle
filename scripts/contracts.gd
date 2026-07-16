@@ -11,6 +11,7 @@ const EXPIRE_DELAY := 20.0  # seconds before a new contract spawns after claimin
 var slots: Array = []
 var _refresh_timers: Array = [0.0, 0.0, 0.0, 0.0]
 var _frame := 0
+var _now_cache := 0   # unix seconds, refreshed ~4x/sec in _process (not per frame)
 var claim_streak := 0   # consecutive claims (resets if a contract expires unclaimed) → credit chain bonus
 
 func _ready() -> void:
@@ -19,7 +20,12 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	_frame += 1
-	var now := int(Time.get_unix_time_from_system())
+	# Wall-clock syscall every frame for a value only compared against
+	# second-granularity deadlines. Refresh it ~4x/sec; a deadline can't be missed
+	# by a quarter-second window it's already checked against in whole seconds.
+	if _frame % 15 == 0 or _now_cache == 0:
+		_now_cache = int(Time.get_unix_time_from_system())
+	var now := _now_cache
 	for i in range(SLOT_COUNT):
 		if i >= slots.size():
 			break

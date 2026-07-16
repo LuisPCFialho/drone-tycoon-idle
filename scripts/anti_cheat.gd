@@ -54,13 +54,19 @@ func clamp_gems(v: int) -> int:
     return clampi(v, 0, 999_999)
 
 ## Simple XOR obfuscation (not encryption — deters casual save editing).
+## Builds bytes then hex-encodes natively: the old per-character `"%02x" % c`
+## allocated a formatted String for every one of ~2500 chars on the main thread
+## every 15s, which was the bulk of the autosave hitch. PackedByteArray.hex_encode()
+## emits exactly 2 lowercase hex digits per byte — byte-identical output for the
+## ASCII payload, so saves written by older builds still decode.
 func encode(data: String) -> String:
-    var result := ""
     var kl: int = XOR_KEY.length()
-    for i in range(data.length()):
-        var c: int = data.unicode_at(i) ^ XOR_KEY.unicode_at(i % kl)
-        result += "%02x" % c
-    return result
+    var n: int = data.length()
+    var bytes := PackedByteArray()
+    bytes.resize(n)
+    for i in range(n):
+        bytes[i] = (data.unicode_at(i) ^ XOR_KEY.unicode_at(i % kl)) & 0xFF
+    return bytes.hex_encode()
 
 func decode(hex: String) -> String:
     var result := ""

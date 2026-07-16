@@ -58,6 +58,21 @@ var _lm_closed: PackedVector2Array
 var _lm_inner: PackedVector2Array
 var _lm_grid_uvs: PackedVector2Array
 var _lm_land_uvs: PackedVector2Array
+# draw_colored_polygon() re-runs Geometry2D.triangulate_polygon() on EVERY call —
+# ear-clipping an ~98-140pt concave outline, 3x per frame, purely to re-derive an
+# identical result. Triangulate once here and feed the indices straight to
+# RenderingServer instead.
+var _lm_idx: PackedInt32Array
+var _lm_land_cols: PackedColorArray
+var _lm_grid_cols: PackedColorArray
+var _lm_sh_cols: PackedColorArray
+# One draw call for all the vertex ticks instead of one per vertex: draw_circle
+# emits a non-batchable CommandPolygon each, so 140 verts = 140 draw calls/frame.
+var _tick_pts: PackedVector2Array
+var _tick_uvs: PackedVector2Array
+var _tick_idx: PackedInt32Array
+var _tick_cols: PackedColorArray
+var _dot: ImageTexture
 
 # --- misc caches ---
 var _next_cost_str := ""
@@ -99,6 +114,7 @@ func _ready() -> void:
 	_hub_city = load("res://assets/art/hub_city.png")
 	_hub_city2 = load("res://assets/art/hub_city2.png")
 	_grid_tile = load("res://assets/art/grid_tile.png")
+	_dot = _make_dot_tex()
 	_coin = load("res://assets/art/coin.png")
 	_lock = load("res://assets/art/ic_lock.png")
 	_sun = load("res://assets/art/sun_glow.png")
@@ -130,6 +146,23 @@ func _ready() -> void:
 	GameState.city_unlocked.connect(func(_i): _refresh_next_cost())
 	_refresh_next_cost()
 	set_process(true)
+
+## Solid round dot used to render the outline vertex ticks as one batched
+## triangle array. Built here rather than reusing assets/art/dot.png — that one is
+## a RING (alpha ~205 at the rim, 8 in the centre), so it rendered the ticks as
+## faint hollow specks instead of the filled draw_circle() blobs they replace.
+## 16px with a 1px smooth edge, drawn down to ~4px: reads as a round dot.
+func _make_dot_tex() -> ImageTexture:
+	var n := 16
+	var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
+	var c := (float(n) - 1.0) * 0.5
+	var r := c - 0.5
+	for y in range(n):
+		for x in range(n):
+			var d := Vector2(float(x) - c, float(y) - c).length()
+			var a := clampf(r - d + 0.5, 0.0, 1.0)   # 1px antialiased falloff
+			img.set_pixel(x, y, Color(1, 1, 1, a))
+	return ImageTexture.create_from_image(img)
 
 ## Small cached alpha-fade texture for a screen edge vignette band. `reverse`
 ## puts the opaque end at position 1 instead of 0 (bottom/right edges fade the
@@ -555,12 +588,35 @@ func _draw_landmass(outline: PackedVector2Array) -> void:
 		_lm_land_uvs = PackedVector2Array()
 		for q in _lm_pts:
 			_lm_land_uvs.append(Vector2(0.5, (q.y - min_y) / yr))
+		# triangulate once (see _lm_idx). _lm_sh is _lm_pts + a constant offset,
+		# so it shares the same topology.
+		_lm_idx = Geometry2D.triangulate_polygon(_lm_pts)
+		_lm_land_cols = PackedColorArray(); _lm_land_cols.resize(_lm_pts.size())
+		_lm_grid_cols = PackedColorArray(); _lm_grid_cols.resize(_lm_pts.size())
+		_lm_sh_cols = PackedColorArray(); _lm_sh_cols.resize(_lm_sh.size())
+		# tick quads: 4 verts + 6 indices per outline vertex, textured with the round
+		# dot.png so they render the same as the draw_circle() they replace
+		_tick_pts = PackedVector2Array(); _tick_uvs = PackedVector2Array()
+		_tick_idx = PackedInt32Array()
+		for i in range(_lm_pts.size()):
+			var q: Vector2 = _lm_pts[i]
+			var o := i * 4
+			_tick_pts.append(q + Vector2(-2.2, -2.2)); _tick_pts.append(q + Vector2(2.2, -2.2))
+			_tick_pts.append(q + Vector2(2.2, 2.2));   _tick_pts.append(q + Vector2(-2.2, 2.2))
+			_tick_uvs.append(Vector2(0, 0)); _tick_uvs.append(Vector2(1, 0))
+			_tick_uvs.append(Vector2(1, 1)); _tick_uvs.append(Vector2(0, 1))
+			_tick_idx.append_array([o, o + 1, o + 2, o, o + 2, o + 3])
+		_tick_cols = PackedColorArray(); _tick_cols.resize(_tick_pts.size())
 
 	var pts := _lm_pts
 	var closed := _lm_closed
 
-	# drop shadow: land visibly lifts off the sea
-	draw_colored_polygon(_lm_sh, Color(SHADOW.r, SHADOW.g, SHADOW.b, 0.5))
+	# drop shadow: land visibly lifts off the sea. All three fills below go via
+	# RenderingServer with the cached _lm_idx instead of draw_colored_polygon(),
+	# which would ear-clip the outline again on every single call.
+	var ci_rid := get_canvas_item()
+	_lm_sh_cols.fill(Color(SHADOW.r, SHADOW.g, SHADOW.b, 0.5))
+	RenderingServer.canvas_item_add_triangle_array(ci_rid, _lm_idx, _lm_sh, _lm_sh_cols)
 
 	# soft outer glow underlay (a few expanding faint strokes)
 	for g in range(4):
@@ -570,18 +626,27 @@ func _draw_landmass(outline: PackedVector2Array) -> void:
 
 	# filled land: single smooth top-light gradient fill (was two flat-color
 	# polygons stacked to fake a gradient, leaving a hard ring-like inner edge)
-	draw_colored_polygon(pts, Color(1, 1, 1, 1), _lm_land_uvs, _land_grad)
+	_lm_land_cols.fill(Color(1, 1, 1, 1))
+	RenderingServer.canvas_item_add_triangle_array(ci_rid, _lm_idx, pts, _lm_land_cols,
+		_lm_land_uvs, PackedInt32Array(), PackedFloat32Array(), _land_grad.get_rid())
 	# holo survey grid clipped to the landmass (repeat-tiled via uv > 1)
 	if _grid_tile != null:
-		draw_colored_polygon(pts, Color(CYAN.r, CYAN.g, CYAN.b, 0.06), _lm_grid_uvs, _grid_tile)
+		_lm_grid_cols.fill(Color(CYAN.r, CYAN.g, CYAN.b, 0.06))
+		RenderingServer.canvas_item_add_triangle_array(ci_rid, _lm_idx, pts, _lm_grid_cols,
+			_lm_grid_uvs, PackedInt32Array(), PackedFloat32Array(), _grid_tile.get_rid())
 
 	# animated holo coastline: wide soft glow + bright thin breathing rim
 	var glow := 0.5 + 0.5 * sin(_t * 1.5)
 	draw_polyline(closed, Color(SKY.r, SKY.g, SKY.b, 0.20), 6.0, true)
 	draw_polyline(closed, Color(CYAN.r, CYAN.g, CYAN.b, 0.55 + 0.30 * glow), 2.2, true)
-	# survey corner ticks at each vertex
-	for q in pts:
-		draw_circle(q, 2.2, Color(CYAN.r, CYAN.g, CYAN.b, 0.45 + 0.25 * glow))
+	# survey corner ticks at each vertex — one textured triangle array rather
+	# than one non-batchable draw_circle() per outline vertex. fill() is a
+	# native memset-class loop, so the glow still pulses for ~free.
+	if _tick_pts.size() > 0:
+		_tick_cols.fill(Color(CYAN.r, CYAN.g, CYAN.b, 0.45 + 0.25 * glow))
+		RenderingServer.canvas_item_add_triangle_array(get_canvas_item(), _tick_idx,
+			_tick_pts, _tick_cols, _tick_uvs, PackedInt32Array(), PackedFloat32Array(),
+			_dot.get_rid())
 
 func _centroid(pts: PackedVector2Array) -> Vector2:
 	var acc := Vector2.ZERO

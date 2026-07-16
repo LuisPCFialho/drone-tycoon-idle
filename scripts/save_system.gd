@@ -6,6 +6,8 @@ const SAVE_PATH   := "user://dts_save.json"
 const BACKUP_PATH := "user://dts_save_bak.json"
 const SAVE_VERSION := 2
 
+var _save_n := 0   # counts saves; the backup is written every 4th (see save_game)
+
 func has_save() -> bool:
 	return FileAccess.file_exists(SAVE_PATH) or FileAccess.file_exists(BACKUP_PATH)
 
@@ -26,7 +28,13 @@ func save_game() -> void:
 	var cs  := AntiCheat.checksum(raw)
 	var envelope := JSON.stringify({"cs": cs, "d": AntiCheat.encode(raw)})
 	_write(SAVE_PATH, envelope)
-	_write(BACKUP_PATH, envelope)  # backup copy
+	# The backup used to be written on every save, doubling the main-thread I/O of
+	# a 15s autosave for no extra safety — writing both back-to-back means a crash
+	# mid-save can take out both copies. A ~60s-stale backup is a better fallback
+	# and costs half the writes.
+	_save_n += 1
+	if _save_n % 4 == 0:
+		_write(BACKUP_PATH, envelope)
 
 func _write(path: String, text: String) -> void:
 	var f := FileAccess.open(path, FileAccess.WRITE)
