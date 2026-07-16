@@ -1,5 +1,5 @@
 extends Control
-## Main scene — Drone Tycoon: Sky Fleet  v1.34.0
+## Main scene — Drone Tycoon: Sky Fleet  v1.35.0
 
 const NAV_H  := 132.0
 const TABS_H := 532.0
@@ -1327,7 +1327,7 @@ func _process(delta: float) -> void:
 	_drone_btn.text     = (("×%d   " % dc) if GameState.buy_mode != 1 else "") + Fmt.short(dcost)
 	_drone_btn.disabled = GameState.credits < dcost
 	_afford(_drone_btn, not _drone_btn.disabled)
-	_drone_detail.text  = ("Tens %d drones" % GameState.drones) + _eta_suffix(dcost)
+	_drone_detail.text  = (tr("Tens %d drones") % GameState.drones) + _eta_suffix(dcost)
 
 	var vip_on := GameState.is_vip_active()
 	_auto_mgr_toggle.visible = vip_on
