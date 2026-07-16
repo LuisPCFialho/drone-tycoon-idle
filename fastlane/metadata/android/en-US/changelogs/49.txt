@@ -1,0 +1,1 @@
+Refreshed icon, 22 performance improvements (much faster startup, smoother map, fewer hitches) and a smaller app.

@@ -1,0 +1,2 @@
+json_key_file(ENV["PLAY_JSON_KEY"] || File.expand_path("~/.play/bananaware-play.json"))
+package_name("com.bananaware.dronetycoon")

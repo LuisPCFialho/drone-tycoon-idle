@@ -1,26 +1,19 @@
 # AdMob & Google Play Billing — integration status
 
-> ## ⚠️ BLOCKED: the AdMob IDs below are STALE — do not ship this build
->
-> The package was renamed `com.lpcf.dronetycoon` → **`com.bananaware.dronetycoon`**
-> (2026-07-16, before first publish — the last moment it could change). AdMob
-> ties an App ID to a package and **the package cannot be edited on an existing
-> AdMob app**, so both IDs below now belong to an app that no longer exists here.
->
-> **To unblock:** create a NEW app in AdMob for `com.bananaware.dronetycoon`,
-> create a new **Rewarded** ad unit, then replace:
-> 1. `addons/AdmobPlugin/android_export.cfg` → `[Release] app_id=` (new App ID)
-> 2. `scripts/ads.gd` → `_admob.android_real_rewarded_id` (new unit ID)
->
-> Until then a release build would carry an App ID that does not match its own
-> package: ads will not serve. Delete/ignore the old `com.lpcf.dronetycoon`
-> AdMob app.
+**Status: LIVE AdMob IDs configured, GDPR/UMP consent integrated. Shippable.**
+`scripts/ads.gd` runs the real SDK (`is_real = true`) on App
+`ca-app-pub-6257070310596477~3020396061` / Rewarded unit
+`ca-app-pub-6257070310596477/2848051384`, and requests the UMP consent form at
+startup for EEA/UK/CH users. Billing still needs its Play Console products
+created (see below). No code changes remain.
 
-**Status: GDPR/UMP consent integrated (v1.34.0); real AdMob IDs pending the
-package rename above.** `scripts/ads.gd` drives the real SDK (`is_real = true`)
-and requests the UMP consent form at startup for EEA/UK/CH users. Billing still
-needs its Play Console products created (see below). Nothing further changes in
-code — only the two ID values.
+> **Package rename note (2026-07-16).** The package became
+> `com.bananaware.dronetycoon` (was `com.lpcf.dronetycoon`) just before first
+> publish. The AdMob IDs above were **not** invalidated by that: this AdMob app
+> was added as "not yet on a store", so it carries only a free-text *app name* —
+> AdMob binds an App ID to a package only once the app is **linked to a Play
+> Store listing**. Do that linking after the Play listing exists, and link it to
+> `com.bananaware.dronetycoon`.
 
 > **Testing safety:** with `is_real = true`, tapping your own served ads is a
 > bannable AdMob policy violation. Add your device's hashed ID to the

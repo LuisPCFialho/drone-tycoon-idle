@@ -118,10 +118,16 @@ def feature_graphic():
     print("feature_graphic.png  1024x500 RGB")
 
 
+# Not screenshots — must never be flattened. The app icon in particular is a
+# 32-bit PNG whose transparent corners are the whole point (see gen_appicon.py);
+# flattening it silently filled them with VOID.
+SKIP_FLATTEN = {"feature_graphic.png", "app_icon_512.png"}
+
+
 def flatten_screenshots():
     """Play wants 24-bit screenshots; the Godot capture writes RGBA."""
     for f in sorted(glob.glob(os.path.join(OUT, "*.png"))):
-        if os.path.basename(f) == "feature_graphic.png":
+        if os.path.basename(f) in SKIP_FLATTEN:
             continue
         im = Image.open(f)
         if im.mode != "RGB":

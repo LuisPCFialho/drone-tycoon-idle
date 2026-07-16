@@ -1,0 +1,1 @@
+Ícone renovado, 22 melhorias de performance (arranque muito mais rápido, mapa mais fluido, menos engasgadelas) e aplicação mais pequena.

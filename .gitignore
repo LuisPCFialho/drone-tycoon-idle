@@ -21,3 +21,9 @@ Thumbs.db
 
 tools/__pycache__/
 *.pyc
+
+# fastlane / Play publishing
+*.play.json
+play-key*.json
+fastlane/report.xml
+fastlane/Preview.html
