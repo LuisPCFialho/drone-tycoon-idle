@@ -27,3 +27,4 @@ tools/__pycache__/
 play-key*.json
 fastlane/report.xml
 fastlane/Preview.html
+fastlane/**/*.import
