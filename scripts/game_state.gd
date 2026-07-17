@@ -17,7 +17,11 @@ const COMBO_DECAY := 10.0
 ## fast logical v["t"]); this only affects where drones are DRAWN.
 const VISUAL_SPEED_FACTOR := 0.05
 
-signal delivered(amount: float, city_index: int)
+## `count` is how many arrivals this emission represents. At high speed_factor a
+## drone completes several round trips in one frame, and they are banked in one
+## emission rather than spamming the signal — so anything COUNTING deliveries must
+## add `count`, not 1. `amount` is the summed credits for all of them.
+signal delivered(amount: float, city_index: int, count: int)
 signal city_unlocked(index: int)
 signal country_changed(index: int)
 signal fleet_changed()
@@ -257,16 +261,40 @@ func _process(delta: float) -> void:
 	for v in vdrones:
 		var d := _route_dist(int(v["route"]), cities)
 		var rate := BASE_SPEED * sf / d
-		v["t"] += rate * float(v["dir"]) * delta
-		if v["t"] >= 1.0:
-			v["t"] = 1.0; v["dir"] = -1
-			combo += 1
+		# A drone is a triangle wave: phase p in [0,2), outbound while p < 1 (t = p),
+		# inbound after (t = 2 - p). One delivery per crossing of an odd integer.
+		#
+		# This used to be `t += rate*dir*delta` + `t = 1.0` on overshoot, which THREW
+		# THE OVERSHOOT AWAY: once rate*delta > 1 a drone could only ever bank one
+		# delivery per frame no matter how fast it flew. That silently capped active
+		# income (speed upgrades stopped paying past ~level 90) and — worse — made
+		# earnings depend on FRAME RATE: the 30-min sim reaches country 13 with 7.96aa
+		# at 10fps and country 17 with 2.17ab at 60fps, same decisions.
+		#
+		# income_per_sec() is the game's canonical model — it already pays the
+		# uncapped rate for offline earnings, Time Warps and Credit Injection (bought
+		# with gems), and it's what the HUD shows. Only active play under-delivered,
+		# so playing earned LESS than being idle. Counting arrivals in closed form
+		# fixes all of it and stays O(1) at any speed.
+		var travel := rate * delta
+		var p: float = v["t"] if int(v["dir"]) == 1 else 2.0 - v["t"]
+		var p2 := p + travel
+		var arrivals := int(floor((p2 - 1.0) / 2.0) - floor((p - 1.0) / 2.0))
+		var np := fposmod(p2, 2.0)
+		if np < 1.0:
+			v["t"] = np; v["dir"] = 1
+		else:
+			v["t"] = 2.0 - np; v["dir"] = -1
+		if arrivals > 0:
+			# For the overwhelmingly common arrivals == 1 this is bit-identical to the
+			# old line. For n > 1 all n share the post-increment combo instead of each
+			# seeing its own — combo saturates (x3.0 at 500) in well under a second at
+			# those rates, so the difference is confined to a negligible ramp.
+			combo += arrivals
 			_combo_decay_t = COMBO_DECAY + combo_window_bonus
-			var amt := const_mult * (1.0 + d) * fs * boost * combo_mult()
-			credits += amt; total_earned += amt; total_deliveries += 1
-			delivered.emit(amt, 1 + int(v["route"]))
-		elif v["t"] <= 0.0:
-			v["t"] = 0.0; v["dir"] = 1
+			var amt := const_mult * (1.0 + d) * fs * boost * combo_mult() * float(arrivals)
+			credits += amt; total_earned += amt; total_deliveries += arrivals
+			delivered.emit(amt, 1 + int(v["route"]), arrivals)
 		# cosmetic slow visual travel (see VISUAL_SPEED_FACTOR) — scales with sf
 		# (speed upgrades still visibly speed drones up) but 20x slower than the
 		# income logic above, so the fleet is followable instead of a blur

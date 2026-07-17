@@ -1,5 +1,5 @@
 extends Control
-## Main scene — Drone Tycoon: Sky Fleet  v1.37.0
+## Main scene — Drone Tycoon: Sky Fleet  v1.38.0
 
 const NAV_H  := 132.0
 const TABS_H := 532.0
@@ -2425,7 +2425,7 @@ func _opt_tex(n: String) -> Texture2D:
 
 # ── Floating delivery earnings ────────────────────────────────────────────────────
 
-func _on_delivered(amount: float, _city_idx: int) -> void:
+func _on_delivered(amount: float, _city_idx: int, _count: int) -> void:
 	_deliver_throttle += 1
 	var n := maxi(1, GameState.drones / 4)
 	if _deliver_throttle % n != 0: return

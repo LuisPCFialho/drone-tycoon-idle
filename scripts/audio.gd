@@ -143,7 +143,7 @@ func _process(_delta: float) -> void:
 			_last_music_db = db
 			_ambient.volume_db = db
 
-func _on_delivered(_amount: float, _hub: int) -> void:
+func _on_delivered(_amount: float, _hub: int, _count: int) -> void:
 	# Subtle, THROTTLED delivery blip (full removal made the core loop feel dead).
 	# Rate-limited to ~1 per 280ms and quiet, so it reads as gentle activity, not
 	# the machine-gun spam that got it removed at high drone counts.

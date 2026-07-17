@@ -51,7 +51,7 @@ func _process(delta: float) -> void:
 			if float(slots[i]["progress"]) >= float(s.get("target", 1.0)):
 				slots[i]["ready"] = true
 
-func _on_delivered(_amount: float, _city: int) -> void:
+func _on_delivered(_amount: float, _city: int, count: int) -> void:
 	var now := int(Time.get_unix_time_from_system())
 	for i in range(slots.size()):
 		var s: Dictionary = slots[i]
@@ -61,7 +61,8 @@ func _on_delivered(_amount: float, _city: int) -> void:
 			continue
 		match str(s.get("type", "")):
 			"deliveries":
-				slots[i]["progress"] = float(s.get("progress", 0.0)) + 1.0
+				# `count`, not 1 — one emission can bank several arrivals
+				slots[i]["progress"] = float(s.get("progress", 0.0)) + float(count)
 				if slots[i]["progress"] >= float(s.get("target", 1.0)):
 					slots[i]["ready"] = true
 			"earn":

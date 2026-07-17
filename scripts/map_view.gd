@@ -889,7 +889,7 @@ func _cost_chip(p: Vector2, cost: String) -> void:
 
 # ---------------------------------------------------------------- pops / fx
 
-func _on_delivered(amount: float, city_index: int) -> void:
+func _on_delivered(amount: float, city_index: int, _count: int) -> void:
 	# Deliveries fire on the fast economic cadence, but drones move on the 20x
 	# slower cosmetic clock — so at high income the beacons strobe far faster
 	# than any drone visibly arrives (reads as random flicker). Throttle to

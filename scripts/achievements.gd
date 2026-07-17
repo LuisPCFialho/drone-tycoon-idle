@@ -104,8 +104,9 @@ func _process(_delta: float) -> void:
             _skins_all_done = true
             check("skins_all", true)
 
-func _on_delivered(_amount: float, _city: int) -> void:
-    counters["deliveries"] = int(counters.get("deliveries", 0)) + 1
+func _on_delivered(_amount: float, _city: int, count: int) -> void:
+    # `count`, not 1: one emission can bank several arrivals (see GameState.delivered)
+    counters["deliveries"] = int(counters.get("deliveries", 0)) + count
     var d: int = int(counters["deliveries"])
     check("first_delivery", d >= 1)
     check("deliveries_100",  d >= 100)
