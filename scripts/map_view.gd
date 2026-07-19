@@ -73,6 +73,12 @@ var _tick_uvs: PackedVector2Array
 var _tick_idx: PackedInt32Array
 var _tick_cols: PackedColorArray
 var _dot: ImageTexture
+# Rounded frosted backing for the map's text chips. draw_rect() can't round
+# corners, so the city-name and cost chips were the only hard-90° rectangles in
+# an otherwise fully rounded, glassmorphic UI — they read as debug boxes. One
+# shared StyleBoxFlat drawn via draw_style_box() joins them to the R_CHIP system;
+# border_color is mutated per call (gold for cost/capital, tinted for cities).
+var _chip_sb: StyleBoxFlat
 
 # --- misc caches ---
 var _next_cost_str := ""
@@ -115,6 +121,12 @@ func _ready() -> void:
 	_hub_city2 = load("res://assets/art/hub_city2.png")
 	_grid_tile = load("res://assets/art/grid_tile.png")
 	_dot = _make_dot_tex()
+	_chip_sb = StyleBoxFlat.new()
+	_chip_sb.set_corner_radius_all(UITheme.R_CHIP)
+	_chip_sb.content_margin_left = 10.0; _chip_sb.content_margin_right = 10.0
+	_chip_sb.content_margin_top = 3.0; _chip_sb.content_margin_bottom = 3.0
+	_chip_sb.set_border_width_all(1)
+	_chip_sb.border_width_top = 2   # frosted top rim, matches UITheme pills
 	_coin = load("res://assets/art/coin.png")
 	_lock = load("res://assets/art/ic_lock.png")
 	_sun = load("res://assets/art/sun_glow.png")
@@ -741,7 +753,9 @@ func _draw_drones(cap: Vector2, cities: Array, route_geom: Dictionary) -> void:
 		_draw_trail(hist, trail_col)
 
 		# soft ground shadow (offset down)
-		draw_circle(pos + Vector2(0, 14.0 * dsc), 12.0 * dsc, Color(SHADOW.r, SHADOW.g, SHADOW.b, 0.30))
+		# soft grounded blob via the AA dot texture, not a hard-edged draw_circle disc
+		var sh_r := 15.0 * dsc
+		draw_texture_rect(_dot, Rect2(pos.x - sh_r, pos.y + 14.0 * dsc - sh_r * 0.5, sh_r * 2.0, sh_r), false, Color(SHADOW.r, SHADOW.g, SHADOW.b, 0.28))
 		# under-glow
 		draw_circle(pos, 16.0 * dsc, Color(SKY.r, SKY.g, SKY.b, 0.10))
 
@@ -869,9 +883,13 @@ func _label(p: Vector2, text: String, col: Color) -> void:
 	# frosted pill backing for legibility (pill height + baseline track the font
 	# size so a larger label never clips its backing)
 	var tw := _measure(text, 18)
-	var pill := Rect2(p.x - tw * 0.5 - 8.0, p.y + 22.0, tw + 16.0, 25.0)
-	draw_rect(pill, Color(MIDNIGHT.r, MIDNIGHT.g, MIDNIGHT.b, 0.55), true)
-	draw_rect(pill, Color(col.r, col.g, col.b, 0.25), false, 1.0)
+	var pill := Rect2(p.x - tw * 0.5 - 10.0, p.y + 22.0, tw + 20.0, 26.0)
+	_chip_sb.bg_color = Color(MIDNIGHT.r, MIDNIGHT.g, MIDNIGHT.b, 0.72)
+	_chip_sb.border_color = Color(col.r, col.g, col.b, 0.30)
+	draw_style_box(_chip_sb, pill)
+	# shadow copy first (the +credits pops already do this) so light labels stay
+	# legible where they cross the breathing coastline or a route lane
+	draw_string(_font, Vector2(p.x - lw * 0.5, p.y + 41.5), text, HORIZONTAL_ALIGNMENT_CENTER, lw, 18, Color(SHADOW.r, SHADOW.g, SHADOW.b, 0.75))
 	draw_string(_font, Vector2(p.x - lw * 0.5, p.y + 40.0), text, HORIZONTAL_ALIGNMENT_CENTER, lw, 18, col)
 
 func _cost_chip(p: Vector2, cost: String) -> void:
@@ -880,12 +898,14 @@ func _cost_chip(p: Vector2, cost: String) -> void:
 	# lives ABOVE the marker (name pills live below) so lanes never collide
 	var lw := 200.0
 	var tw := _measure(cost, 17)
-	var pill := Rect2(p.x - tw * 0.5 - 9.0 - 9.0, p.y - 46.0, tw + 18.0 + 18.0, 25.0)
-	draw_rect(pill, Color(MIDNIGHT.r, MIDNIGHT.g, MIDNIGHT.b, 0.62), true)
-	draw_rect(pill, Color(GOLD.r, GOLD.g, GOLD.b, 0.30), false, 1.0)
+	var pill := Rect2(p.x - tw * 0.5 - 27.0, p.y - 46.0, tw + 45.0, 26.0)
+	_chip_sb.bg_color = Color(MIDNIGHT.r, MIDNIGHT.g, MIDNIGHT.b, 0.78)
+	_chip_sb.border_color = Color(GOLD.r, GOLD.g, GOLD.b, 0.35)
+	draw_style_box(_chip_sb, pill)
 	if _lock != null:
-		draw_texture_rect(_lock, Rect2(pill.position.x + 5.0, pill.position.y + 5.5, 14, 14), false, Color(GOLD.r, GOLD.g, GOLD.b, 0.95))
-	draw_string(_font, Vector2(p.x - lw * 0.5 + 8.0, p.y - 29.0), cost, HORIZONTAL_ALIGNMENT_CENTER, lw, 17, Color(GOLD.r, GOLD.g, GOLD.b, 0.95))
+		draw_texture_rect(_lock, Rect2(pill.position.x + 8.0, pill.position.y + 6.0, 14, 14), false, Color(GOLD.r, GOLD.g, GOLD.b, 0.95))
+	draw_string(_font, Vector2(p.x - lw * 0.5 + 9.5, p.y - 27.5), cost, HORIZONTAL_ALIGNMENT_CENTER, lw, 17, Color(SHADOW.r, SHADOW.g, SHADOW.b, 0.7))
+	draw_string(_font, Vector2(p.x - lw * 0.5 + 9.0, p.y - 29.0), cost, HORIZONTAL_ALIGNMENT_CENTER, lw, 17, Color(GOLD.r, GOLD.g, GOLD.b, 0.95))
 
 # ---------------------------------------------------------------- pops / fx
 

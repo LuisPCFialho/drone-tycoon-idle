@@ -1,5 +1,5 @@
 extends Control
-## Main scene — Drone Tycoon: Sky Fleet  v1.38.0
+## Main scene — Drone Tycoon: Sky Fleet  v1.39.0
 
 const NAV_H  := 132.0
 const TABS_H := 532.0
@@ -249,6 +249,11 @@ func _boot_intro(loaded: bool) -> void:
 		intro.tween_property(hero, "scale", Vector2.ONE, 0.6).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 		intro.tween_property(t1, "modulate:a", 1.0, 0.4).set_delay(0.25)
 		intro.tween_property(t2, "modulate:a", 1.0, 0.4).set_delay(0.38)
+		# one-shot light sweep across the wordmark once it's settled — a branded
+		# reveal on the first-impression frame instead of a flat cross-fade. Chained
+		# so t1.size is real by the time it runs. (already inside `not reduce_motion`)
+		intro.chain().tween_callback(func():
+			if is_instance_valid(t1): Fx.shimmer(t1, UITheme.CYAN))
 	else:
 		hero.modulate = Color.WHITE; t1.modulate = Color.WHITE; t2.modulate = Color.WHITE
 
@@ -329,9 +334,12 @@ func _build_hud() -> void:
 	_credits_chip.gui_input.connect(func(e: InputEvent):
 		if (e is InputEventMouseButton and (e as InputEventMouseButton).pressed) \
 				or (e is InputEventScreenTouch and (e as InputEventScreenTouch).pressed):
+			Fx.press(_credits_chip); Audio.play("tap")   # the HUD hero chip finally acknowledges its own tap
 			_show_income_breakdown())
+	# both secondary chips share one size (was 22 vs 21 — an imperceptible 1px
+	# split that just fragmented the type ramp); the size step is the hero chip's
 	var c2 := _chip("ic_gems", UITheme.CYAN, 22); _gems_lbl = c2["label"]; _gems_chip = c2["root"]; r1.add_child(c2["root"])
-	var c3 := _chip("ic_prestige", UITheme.VIOLET, 21); _infl_lbl = c3["label"]; _infl_chip = c3["root"]; r1.add_child(c3["root"])
+	var c3 := _chip("ic_prestige", UITheme.VIOLET, 22); _infl_lbl = c3["label"]; _infl_chip = c3["root"]; r1.add_child(c3["root"])
 	_vip_badge = PanelContainer.new(); _vip_badge.add_theme_stylebox_override("panel", UITheme.solid(UITheme.GOLD, 14))
 	var vb := HBoxContainer.new(); vb.add_theme_constant_override("separation", 3); _vip_badge.add_child(vb)
 	vb.add_child(_icon("ic_vip", 18))
@@ -875,10 +883,20 @@ func _rebuild_achievements() -> void:
 	if _achieve_count_lbl != null and is_instance_valid(_achieve_count_lbl):
 		_achieve_count_lbl.text = tr("Desbloqueadas: %d / %d") % [Achievements.done_count(), Achievements.total_count()]
 
+## Per-item icon so Legacy rows lead with the same circular icon-badge every
+## other tab's rows have — the Legacy tab was the one place rows started straight
+## into text with an empty right gutter, breaking the cross-tab card language.
+const _PRESTIGE_ICONS := {
+	"speed_5": "ic_speed", "cargo_5": "ic_cargo", "value_5": "ic_value",
+	"offline_10": "ic_boost", "offline_20": "ic_boost", "drones_10": "ic_drone",
+	"drones_25": "ic_drone", "vip_24h": "ic_vip", "start_c2": "ic_range",
+}
+
 func _make_prestige_shop_row(id: String) -> PanelContainer:
 	var item: Dictionary = Prestige.SHOP[id]
 	var pp := PanelContainer.new(); pp.add_theme_stylebox_override("panel", UITheme.prestige_card())
 	var ph := HBoxContainer.new(); ph.add_theme_constant_override("separation", 10); pp.add_child(ph)
+	ph.add_child(_icon_badge(_PRESTIGE_ICONS.get(id, "ic_prestige"), UITheme.VIOLET))
 	var pv := VBoxContainer.new(); pv.size_flags_horizontal = Control.SIZE_EXPAND_FILL; ph.add_child(pv)
 	pv.add_child(_lbl(item["name"], 19, UITheme.INK))
 	var pd := _lbl(item["desc"], 16, UITheme.MUTED); pd.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; pv.add_child(pd)
@@ -908,6 +926,7 @@ func _make_prestige_shop_row(id: String) -> PanelContainer:
 func _make_ascendant_row() -> PanelContainer:
 	var pp := PanelContainer.new(); pp.add_theme_stylebox_override("panel", UITheme.prestige_card())
 	var ph := HBoxContainer.new(); ph.add_theme_constant_override("separation", 10); pp.add_child(ph)
+	ph.add_child(_icon_badge("ic_prestige", UITheme.VIOLET))
 	var pv := VBoxContainer.new(); pv.size_flags_horizontal = Control.SIZE_EXPAND_FILL; ph.add_child(pv)
 	pv.add_child(_lbl(tr("Núcleo Ascendente"), 19, UITheme.INK))
 	_ascendant_lbl = _lbl("", 16, UITheme.MUTED)
@@ -1678,6 +1697,12 @@ func _on_achievement(id: String) -> void:
 	var def: Dictionary = Achievements.DEFS.get(id, {})
 	_toast(str(def.get("name", id)) + " desbloqueada!", UITheme.GOLD, "ic_achieve")
 	Fx.screen_flash(self, UITheme.GOLD, 0.08)
+	# An achievement is a designed reward but landed weaker than a routine city
+	# unlock (which gets a ring). Add a gold ring + sting — deliberately no
+	# confetti, since achievements can fire in quick succession and would spam.
+	Audio.play("milestone")
+	if not Fx.reduce_motion:   # ring_pulse has no internal reduce gate
+		Fx.ring_pulse(self, Vector2(size.x * 0.5, size.y * 0.30), UITheme.GOLD, 2.2)
 	if _achieve_count_lbl != null and is_instance_valid(_achieve_count_lbl):
 		_achieve_count_lbl.text = tr("Desbloqueadas: %d / %d") % [Achievements.done_count(), Achievements.total_count()]
 	if _achieve_cells.has(id):
@@ -2345,7 +2370,7 @@ func _overlay() -> CanvasLayer:
 		var tapped: bool = (e is InputEventMouseButton and (e as InputEventMouseButton).pressed) \
 			or (e is InputEventScreenTouch and (e as InputEventScreenTouch).pressed)
 		if tapped and is_instance_valid(layer):
-			layer.queue_free())
+			_dismiss(layer))
 	layer.add_child(dim); add_child(layer)
 	var tw := create_tween()
 	tw.tween_property(dim, "color:a", 0.78, 0.2)
@@ -2384,8 +2409,24 @@ func _popup_box(layer: CanvasLayer, accent := UITheme.ACCENT) -> VBoxContainer:
 func _close_btn(layer: CanvasLayer) -> Button:
 	var close := Button.new(); close.text = "Fechar"; close.add_theme_font_size_override("font_size", 30)
 	close.custom_minimum_size = Vector2(0, 84); close.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
-	close.pressed.connect(func(): Fx.press(close); layer.queue_free())
+	close.pressed.connect(func(): Fx.press(close); _dismiss(layer))
 	return close
+
+## Symmetric close for popups: every popup springs IN (see _popup_box) but used to
+## vanish on a hard queue_free(), a jump-cut exit undercutting a considered entrance.
+## Fades the dim + panel over 0.13s, then frees. Snap under reduce_motion.
+func _dismiss(layer: CanvasLayer) -> void:
+	if not is_instance_valid(layer):
+		return
+	if Fx.reduce_motion:
+		layer.queue_free(); return
+	var tw := create_tween(); tw.set_parallel(true)
+	for ch in layer.get_children():
+		if ch is ColorRect:
+			tw.tween_property(ch, "color:a", 0.0, 0.13).set_ease(Tween.EASE_IN)
+		elif ch is CanvasItem:
+			tw.tween_property(ch, "modulate:a", 0.0, 0.13).set_ease(Tween.EASE_IN)
+	tw.chain().tween_callback(layer.queue_free)
 
 # ── Primitives ───────────────────────────────────────────────────────────────────
 

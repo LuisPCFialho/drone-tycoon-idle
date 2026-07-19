@@ -170,7 +170,11 @@ static func action_card(accent: Color) -> StyleBoxFlat:
 	var s := StyleBoxFlat.new(); s.bg_color = base; s.set_corner_radius_all(R_CARD)
 	s.set_content_margin_all(12)
 	s.content_margin_left = 14
-	s.border_color = lerp(BORDER, accent, 0.55); s.set_border_width_all(1)
+	# Tint dialed 0.55 -> 0.35: at 0.55 the full 1px frame lerped so far toward the
+	# accent that warm cards (amber/green) framed visibly brighter than cool ones
+	# (blue/cyan), so a stack didn't read as one card family. 0.35 keeps accent
+	# identity (it still lives in the 3px left rail + icon badge) but evens the frame.
+	s.border_color = lerp(BORDER, accent, 0.35); s.set_border_width_all(1)
 	# Brighter top edge (top-light) + 3px left accent rail for instant scanning.
 	s.border_width_top = 1
 	s.border_width_left = 3
@@ -214,7 +218,10 @@ static func seg(active: bool) -> StyleBoxFlat:
 		s.border_color = ACCENT.lightened(0.34); s.border_width_top = 2
 		_glow(s, ACCENT, 0.42, 10)
 	else:
-		s.border_color = BORDER; s.set_border_width_all(1)
+		# was a flat BORDER frame — the only raised chip in the theme without the
+		# 1px top-light rim, so inactive segments read as dead holes next to Max.
+		# Match stat_chip/pill: a subtle white top gloss so they read as raised toggles.
+		s.border_color = Color(1.0, 1.0, 1.0, 0.08); s.border_width_top = 1
 	return s
 
 ## Bottom-panel background (rounded top, flat bottom).
