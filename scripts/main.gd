@@ -1,5 +1,5 @@
 extends Control
-## Main scene — Drone Tycoon: Sky Fleet  v1.39.0
+## Main scene — Drone Tycoon: Sky Fleet  v1.40.0
 
 const NAV_H  := 132.0
 const TABS_H := 532.0
@@ -2075,6 +2075,15 @@ func _notification(what: int) -> void:
 		# whichever language was active the last time readiness flipped.
 		if _prestige_info_lbl != null and is_instance_valid(_prestige_info_lbl):
 			_prestige_info_lbl.text = ""
+		# Upgrade + talent detail strings are gated behind the _sig / _lvl
+		# dirty-checks in _process (a perf optimization): they only rebuild when
+		# level/cost move, so a locale switch alone left them stuck in the previous
+		# language until the player next levelled that row. Invalidate both so the
+		# next _process tick re-renders every detail in the new language.
+		for key: String in _rows:
+			_rows[key]["_sig"] = null
+		for key: String in _talent_rows:
+			_talent_rows[key]["_lvl"] = -1
 	elif what == NOTIFICATION_WM_GO_BACK_REQUEST:
 		# Android hardware/gesture Back: close the top popup instead of killing
 		# the app; if nothing is open, ask before quitting. (Was unhandled — Back
@@ -2175,28 +2184,29 @@ func _show_settings() -> void:
 	box.add_child(_settings_toggle("Reduzir animações", Fx.reduce_motion,
 		func(on): Fx.set_reduce_motion(on); SaveSystem.save_game()))
 
-	var lang_row := HBoxContainer.new(); lang_row.add_theme_constant_override("separation", 6)
-	box.add_child(lang_row)
-	var lang_lbl := _lbl("Idioma / Language", 22, UITheme.INK)
-	lang_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL; lang_row.add_child(lang_lbl)
-	var pt_btn := Button.new(); pt_btn.text = "PT"; pt_btn.custom_minimum_size = Vector2(64, 56)
-	var en_btn := Button.new(); en_btn.text = "EN"; en_btn.custom_minimum_size = Vector2(64, 56)
-	pt_btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
-	en_btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
-	# Reads TranslationServer directly (not a locally-captured copy) so the
-	# highlight reflects the CURRENT locale even after _set_language() changes
-	# it — the previous version froze `eff_locale` at popup-build time and
-	# never re-read it, so the highlight never moved after pressing PT/EN.
+	var lang_lbl := _lbl("Idioma / Language", 22, UITheme.INK); box.add_child(lang_lbl)
+	# 9 languages don't fit one row, so wrap compact chips in a flow container.
+	# Native short labels so speakers recognise their own language.
+	var lang_flow := HFlowContainer.new(); lang_flow.add_theme_constant_override("h_separation", 6)
+	lang_flow.add_theme_constant_override("v_separation", 6); box.add_child(lang_flow)
+	var lang_btns := {}
+	# Highlight tracks the CURRENT TranslationServer locale (not a build-time copy),
+	# so it moves the moment a chip is pressed — matches every language, not just PT.
 	var refresh_lang_btns := func():
-		var is_pt := TranslationServer.get_locale().begins_with("pt")
-		pt_btn.add_theme_stylebox_override("normal", UITheme.seg(is_pt))
-		pt_btn.add_theme_stylebox_override("hover", UITheme.seg(is_pt))
-		en_btn.add_theme_stylebox_override("normal", UITheme.seg(not is_pt))
-		en_btn.add_theme_stylebox_override("hover", UITheme.seg(not is_pt))
+		var cur := TranslationServer.get_locale().substr(0, 2)
+		for code: String in lang_btns:
+			var on: bool = (code == cur)
+			var b: Button = lang_btns[code]
+			b.add_theme_stylebox_override("normal", UITheme.seg(on))
+			b.add_theme_stylebox_override("hover", UITheme.seg(on))
+	for pair: Array in [["pt","PT"],["en","EN"],["es","ES"],["fr","FR"],["de","DE"],["it","IT"],["ru","RU"],["ja","日本語"],["zh","中文"]]:
+		var code: String = pair[0]
+		var lb := Button.new(); lb.text = pair[1]; lb.custom_minimum_size = Vector2(70, 56)
+		lb.add_theme_font_size_override("font_size", 20)
+		lb.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+		lb.pressed.connect(func(): Fx.press(lb); _set_language(code); refresh_lang_btns.call())
+		lang_flow.add_child(lb); lang_btns[code] = lb
 	refresh_lang_btns.call()
-	pt_btn.pressed.connect(func(): Fx.press(pt_btn); _set_language("pt"); refresh_lang_btns.call())
-	en_btn.pressed.connect(func(): Fx.press(en_btn); _set_language("en"); refresh_lang_btns.call())
-	lang_row.add_child(pt_btn); lang_row.add_child(en_btn)
 
 	var rule := Panel.new(); rule.custom_minimum_size = Vector2(0, 2)
 	rule.add_theme_stylebox_override("panel", UITheme.section_rule()); box.add_child(rule)
