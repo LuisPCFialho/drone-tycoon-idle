@@ -74,6 +74,34 @@ func _ready() -> void:
 func num_countries() -> int:
 	return WORLD.size()
 
+## World regions (the 40 countries grouped geographically). Completing every
+## country in a region grants a ONE-TIME permanent global bonus (see
+## GameState.region_bonus_mult) — turns the 40-country climb into 7 rewarded
+## milestones and the final country (USA) into a real "World Domination" payoff
+## instead of a dead-end "Parabéns!" wall. `to` is the last country index of the
+## region; `from` is the previous region's `to`+1. Bonuses are additive and
+## back-loaded (deep regions require many prestiges to reach), so the tuned
+## early-run economy is barely touched — validated with tests/sim.gd.
+const REGIONS := [
+	{"name_key": "Europa Ocidental",        "to": 9,  "bonus": 0.04},
+	{"name_key": "Europa Nórdica e de Leste","to": 19, "bonus": 0.06},
+	{"name_key": "Eurásia",                  "to": 22, "bonus": 0.08},
+	{"name_key": "África",                   "to": 26, "bonus": 0.12},
+	{"name_key": "Médio Oriente e Sul da Ásia","to": 28,"bonus": 0.16},
+	{"name_key": "Ásia Oriental e Oceânia",  "to": 33, "bonus": 0.24},
+	{"name_key": "Américas",                 "to": 39, "bonus": 0.40},
+]
+
+## Region index that country `ci` belongs to (0..REGIONS.size()-1).
+func region_of(ci: int) -> int:
+	for r in range(REGIONS.size()):
+		if ci <= int(REGIONS[r]["to"]):
+			return r
+	return REGIONS.size() - 1
+
+func region_from(r: int) -> int:
+	return 0 if r <= 0 else int(REGIONS[r - 1]["to"]) + 1
+
 func country(i: int) -> Dictionary:
 	return WORLD[clampi(i, 0, WORLD.size() - 1)]
 

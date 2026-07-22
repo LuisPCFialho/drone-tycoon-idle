@@ -25,6 +25,7 @@ signal delivered(amount: float, city_index: int, count: int)
 signal city_unlocked(index: int)
 signal country_changed(index: int)
 signal fleet_changed()
+signal region_completed(region_index: int)
 
 # --- persisted ---
 var credits := 0.0
@@ -32,6 +33,7 @@ var gems := 0
 var influence := 0
 var influence_total := 0
 var current_country := 0
+var regions_done: Array = []   # region indices whose one-time completion bonus is earned (permanent)
 var cities_unlocked := 1          # active delivery cities (capital is always home)
 var drones := 1
 var levels := {"speed": 0, "cargo": 0, "value": 0, "routes": 0}
@@ -129,7 +131,33 @@ func skin_collection_mult() -> float:
 func global_mult() -> float:
 	return (1.0 + 0.05 * float(influence)) * (1.0 + 0.06 * float(talents["global"])) \
 		* (1.0 + 0.25 * float(gem_boost)) * Billing.perm_mult * vip_mult() \
-		* Events.current_mult * Prestige.effective_mult() * skin_collection_mult()
+		* Events.current_mult * Prestige.effective_mult() * skin_collection_mult() \
+		* region_bonus_mult()
+
+## Permanent multiplier from completed world regions (see Economy.REGIONS). Earned
+## once each and kept forever (survives prestige), so it's a long-horizon meta
+## reward, not a per-run inflator. Max ~2.1x when all 7 regions are done — which
+## requires reaching country 40, i.e. many prestiges deep.
+func region_bonus_mult() -> float:
+	var m := 1.0
+	for r in regions_done:
+		var ri := int(r)
+		if ri >= 0 and ri < Economy.REGIONS.size():
+			m += float(Economy.REGIONS[ri]["bonus"])
+	return m
+
+## Award any newly-completed region's one-time bonus. A region is complete once
+## you've expanded past its last country, or you're ON its last country with every
+## city unlocked (covers the final region, the USA). Called after each expand/unlock.
+func _check_regions() -> void:
+	for r in range(Economy.REGIONS.size()):
+		if regions_done.has(r):
+			continue
+		var last: int = int(Economy.REGIONS[r]["to"])
+		var complete := current_country > last or (current_country == last and all_cities_unlocked())
+		if complete:
+			regions_done.append(r)
+			region_completed.emit(r)
 
 ## [label, factor] rows for the income-breakdown popup — every multiplier that
 ## feeds income, so players can see WHY their rate is what it is. Order roughly
@@ -144,6 +172,7 @@ func mult_breakdown() -> Array:
 		["Talento Global", 1.0 + 0.06 * float(talents["global"])],
 		["Núcleo de Lucro", 1.0 + 0.25 * float(gem_boost)],
 		["Skins", skin_collection_mult()],
+		["Regiões", region_bonus_mult()],
 		["Rede de Rotas", route_mult()],
 		["Velocidade", speed_factor()],
 		["Compra permanente", Billing.perm_mult],
@@ -394,6 +423,7 @@ func unlock_city() -> bool:
 	cities_unlocked += 1
 	_rebuild_drones()
 	city_unlocked.emit(cities_unlocked)
+	_check_regions()   # unlocking the final country's last city completes the last region
 	return true
 
 func all_cities_unlocked() -> bool:
@@ -420,6 +450,7 @@ func expand_country() -> bool:
 	influence_total = influence_total + 4 + int(current_country / 3)
 	_rebuild_drones()
 	country_changed.emit(current_country)
+	_check_regions()   # expanding past a region's last country completes it
 	SaveSystem.save_game()
 	return true
 
@@ -562,6 +593,7 @@ func to_dict() -> Dictionary:
 		"skins_owned": skins_owned.duplicate(), "skin_active": skin_active,
 		"vip_temp_until": vip_temp_until, "auto_manager": auto_manager,
 		"ads_watched": ads_watched, "ads_today": ads_today, "ads_today_key": ads_today_key,
+		"regions_done": regions_done.duplicate(),
 	}
 
 func from_dict(d: Dictionary) -> void:
@@ -592,6 +624,11 @@ func from_dict(d: Dictionary) -> void:
 	ads_watched = int(d.get("ads_watched", 0))
 	ads_today = int(d.get("ads_today", 0))
 	ads_today_key = str(d.get("ads_today_key", ""))
+	regions_done = []
+	for r in Array(d.get("regions_done", [])):
+		var ri := int(r)
+		if ri >= 0 and ri < Economy.REGIONS.size() and ri not in regions_done:
+			regions_done.append(ri)
 	skins_owned = ["classic"]
 	for s in Array(d.get("skins_owned", [])):
 		var sid: String = str(s)

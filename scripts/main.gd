@@ -1,5 +1,5 @@
 extends Control
-## Main scene — Drone Tycoon: Sky Fleet  v1.40.0
+## Main scene — Drone Tycoon: Sky Fleet  v1.41.0
 
 const NAV_H  := 132.0
 const TABS_H := 532.0
@@ -125,6 +125,7 @@ func _ready() -> void:
 
 	GameState.city_unlocked.connect(_on_city_unlocked)
 	GameState.country_changed.connect(_on_country_changed)
+	GameState.region_completed.connect(_on_region_completed)
 	GameState.delivered.connect(_on_delivered)
 	Achievements.unlocked.connect(_on_achievement)
 	Events.started.connect(_on_event_start)
@@ -1673,6 +1674,23 @@ func _on_country_changed(i: int) -> void:
 		Fx.ring_pulse(self, c, UITheme.CYAN, 2.2)
 		Audio.play("milestone")
 		Fx.vibrate(60)   # country expansion — stronger than a regular tap
+
+## A world region was fully conquered — award celebration for its permanent bonus.
+## Scales with the region's weight; the last region (Americas) is the grand finale.
+func _on_region_completed(r: int) -> void:
+	var reg: Dictionary = Economy.REGIONS[r]
+	var pct := int(round(float(reg["bonus"]) * 100.0))
+	var name: String = tr(str(reg["name_key"]))
+	var c := Vector2(size.x * 0.5, size.y * 0.40)
+	var final := r >= Economy.REGIONS.size() - 1
+	_toast(tr("🌍 Região dominada: %s  ·  +%d%% lucros permanente") % [name, pct], UITheme.GREEN, "ic_city")
+	Fx.confetti(self, c, 64 if final else 40, [UITheme.GREEN, UITheme.GOLD, UITheme.CYAN, UITheme.PINK])
+	Fx.screen_flash(self, UITheme.GREEN, 0.22 if final else 0.14)
+	if not Fx.reduce_motion:
+		Fx.ring_pulse(self, c, UITheme.GREEN, 3.0 if final else 2.4)
+		Fx.ring_pulse(self, c, UITheme.GOLD, 2.4)
+	Audio.play("prestige" if final else "milestone")
+	Fx.vibrate(100 if final else 55)
 
 func _banana_rain() -> void:
 	var rng := RandomNumberGenerator.new(); rng.randomize()
