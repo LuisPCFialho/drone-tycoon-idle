@@ -37,6 +37,7 @@ const MAX_PARTICLES := 8     # live CPUParticles2D emitters
 const MAX_LIGHT_FX  := 60    # lightweight tweened Sprite2D/rect nodes (coin_fountain/confetti)
 
 var reduce_motion := false
+var notifications_enabled := true   # re-engagement reminders (see Notifications autoload)
 var haptics := true
 var locale := ""   # "" = not explicitly chosen → defaults to English (see apply_locale)
 var _t := 0.0                # shared pulse_clock rhythm
@@ -555,12 +556,13 @@ func set_reduce_motion(enabled: bool) -> void:
 	reduce_motion = enabled
 
 func to_dict() -> Dictionary:
-	return {"reduce_motion": reduce_motion, "haptics": haptics, "locale": locale}
+	return {"reduce_motion": reduce_motion, "haptics": haptics, "locale": locale, "notifications": notifications_enabled}
 
 func from_dict(d: Dictionary) -> void:
 	reduce_motion = bool(d.get("reduce_motion", false))
 	haptics = bool(d.get("haptics", true))
 	locale = str(d.get("locale", ""))
+	notifications_enabled = bool(d.get("notifications", true))
 	apply_locale()
 
 ## Applies `locale`, auto-detecting from the device's language on first

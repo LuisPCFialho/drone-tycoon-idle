@@ -1,5 +1,5 @@
 extends Control
-## Main scene — Drone Tycoon: Sky Fleet  v1.41.0
+## Main scene — Drone Tycoon: Sky Fleet  v1.42.0
 
 const NAV_H  := 132.0
 const TABS_H := 532.0
@@ -2216,6 +2216,11 @@ func _show_settings() -> void:
 			SaveSystem.save_game()))
 	box.add_child(_settings_toggle("Reduzir animações", Fx.reduce_motion,
 		func(on): Fx.set_reduce_motion(on); SaveSystem.save_game()))
+	box.add_child(_settings_toggle("Notificações", Fx.notifications_enabled,
+		func(on: bool):
+			Fx.notifications_enabled = on
+			if not on and has_node("/root/Notifications"): Notifications._cancel_all()
+			SaveSystem.save_game()))
 
 	var lang_lbl := _lbl("Idioma / Language", 22, UITheme.INK); box.add_child(lang_lbl)
 	# 9 languages don't fit one row, so wrap compact chips in a flow container.
