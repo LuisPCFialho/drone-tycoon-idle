@@ -126,6 +126,8 @@ func _ready() -> void:
 	GameState.city_unlocked.connect(_on_city_unlocked)
 	GameState.country_changed.connect(_on_country_changed)
 	GameState.region_completed.connect(_on_region_completed)
+	if has_node("/root/CloudSave"):
+		CloudSave.cloud_restored.connect(_on_cloud_restored)
 	GameState.delivered.connect(_on_delivered)
 	Achievements.unlocked.connect(_on_achievement)
 	Events.started.connect(_on_event_start)
@@ -1691,6 +1693,19 @@ func _on_region_completed(r: int) -> void:
 		Fx.ring_pulse(self, c, UITheme.GOLD, 2.4)
 	Audio.play("prestige" if final else "milestone")
 	Fx.vibrate(100 if final else 55)
+
+## A better cloud save replaced local state at startup — rebuild the state-driven
+## UI (same refresh set as _full_reset, minus scene reload which crashes on Android).
+func _on_cloud_restored() -> void:
+	for c in get_children():
+		if c is CanvasLayer:
+			c.queue_free()
+	_disp_credits = 0.0
+	_rebuild_city_list()
+	_rebuild_prestige_shop()
+	_rebuild_achievements()
+	_switch_tab(0)
+	_toast(tr("☁ Progresso restaurado da nuvem"), UITheme.CYAN, "ic_prestige")
 
 func _banana_rain() -> void:
 	var rng := RandomNumberGenerator.new(); rng.randomize()

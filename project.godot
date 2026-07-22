@@ -1,4 +1,10 @@
-; Drone Tycoon: Sky Fleet — portrait, full-screen idle delivery tycoon. Godot 4.6.
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
 
 config_version=5
 
@@ -8,23 +14,12 @@ config/name="Drone Tycoon: Sky Fleet"
 config/version="1.41.0"
 run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.6", "GL Compatibility")
-config/icon="res://appicon.png"
 boot_splash/show_image=false
+config/icon="res://appicon.png"
 
 [autoload]
 
-
-
-
-
-
-
-
-
-
-
-
-
+GodotPlayGameServices="*uid://ly1fx0ba2v1m"
 Fmt="*res://scripts/format.gd"
 Economy="*res://scripts/economy.gd"
 Billing="*res://scripts/billing.gd"
@@ -39,14 +34,7 @@ GameState="*res://scripts/game_state.gd"
 Audio="*res://scripts/audio.gd"
 SaveSystem="*res://scripts/save_system.gd"
 Contracts="*res://scripts/contracts.gd"
-
-[internationalization]
-
-locale/translations=PackedStringArray("res://translations/ui.pt.translation", "res://translations/ui.en.translation", "res://translations/ui.es.translation", "res://translations/ui.fr.translation", "res://translations/ui.de.translation", "res://translations/ui.it.translation", "res://translations/ui.ru.translation", "res://translations/ui.ja.translation", "res://translations/ui.zh.translation")
-
-[editor_plugins]
-
-enabled=PackedStringArray("res://addons/AdmobPlugin/plugin.cfg", "res://addons/GodotGooglePlayBilling/plugin.cfg")
+CloudSave="*res://scripts/cloud_save.gd"
 
 [display]
 
@@ -56,13 +44,17 @@ window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 window/handheld/orientation=1
 
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/AdmobPlugin/plugin.cfg", "res://addons/GodotGooglePlayBilling/plugin.cfg")
+
+[internationalization]
+
+locale/translations=PackedStringArray("res://translations/ui.pt.translation", "res://translations/ui.en.translation", "res://translations/ui.es.translation", "res://translations/ui.fr.translation", "res://translations/ui.de.translation", "res://translations/ui.it.translation", "res://translations/ui.ru.translation", "res://translations/ui.ja.translation", "res://translations/ui.zh.translation")
+
 [physics]
 
-# the game has zero RigidBody2D/CharacterBody2D/Area2D/StaticBody2D nodes and
-# never uses _physics_process — the default 60 physics ticks/sec were still
-# stepping and thread-syncing the (unused) physics server every frame on
-# Android for nothing. 1 is the minimum accepted value (0 is invalid).
-common/physics_ticks_per_second=1
+"#thegamehaszeroRigidBody2D/CharacterBody2D/Area2D/StaticBody2Dnodesand#neveruses_physics_processâthedefault60physicsticks/secwerestill#steppingandthread-syncingthe(unused)physicsservereveryframeon#Androidfornothing.1istheminimumacceptedvalue(0isinvalid).common/physics_ticks_per_second"=1
 
 [rendering]
 

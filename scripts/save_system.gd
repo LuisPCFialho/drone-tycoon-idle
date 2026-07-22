@@ -11,7 +11,10 @@ var _save_n := 0   # counts saves; the backup is written every 4th (see save_gam
 func has_save() -> bool:
 	return FileAccess.file_exists(SAVE_PATH) or FileAccess.file_exists(BACKUP_PATH)
 
-func save_game() -> void:
+## Builds the obfuscated+checksummed envelope string (the exact bytes written to
+## disk). Extracted so CloudSave can push the identical blob to Play Games
+## Snapshots without re-reading the file.
+func build_envelope() -> String:
 	var payload := {
 		"v": SAVE_VERSION,
 		"ts": int(Time.get_unix_time_from_system()),
@@ -26,7 +29,10 @@ func save_game() -> void:
 	}
 	var raw := JSON.stringify(payload)
 	var cs  := AntiCheat.checksum(raw)
-	var envelope := JSON.stringify({"cs": cs, "d": AntiCheat.encode(raw)})
+	return JSON.stringify({"cs": cs, "d": AntiCheat.encode(raw)})
+
+func save_game() -> void:
+	var envelope := build_envelope()
 	_write(SAVE_PATH, envelope)
 	# The backup used to be written on every save, doubling the main-thread I/O of
 	# a 15s autosave for no extra safety — writing both back-to-back means a crash
@@ -35,6 +41,10 @@ func save_game() -> void:
 	_save_n += 1
 	if _save_n % 4 == 0:
 		_write(BACKUP_PATH, envelope)
+	# let the (optional) cloud layer know local advanced; it pushes on its own
+	# throttle. Guarded so nothing changes when cloud save isn't present/active.
+	if has_node("/root/CloudSave"):
+		CloudSave.mark_dirty()
 
 func _write(path: String, text: String) -> void:
 	var f := FileAccess.open(path, FileAccess.WRITE)
@@ -111,3 +121,42 @@ func wipe() -> void:
 	for p in [SAVE_PATH, BACKUP_PATH]:
 		if FileAccess.file_exists(p):
 			DirAccess.remove_absolute(ProjectSettings.globalize_path(p))
+
+# ── Cloud-save helpers (Play Games Snapshots) ────────────────────────────────
+# CloudSave uses these; SaveSystem stays the single source of truth for the
+# envelope format so on-disk and in-cloud blobs are byte-identical.
+
+## Decode a cloud envelope string into its inner payload dict. Returns {} if the
+## blob is empty, not an envelope, or fails the checksum — so a corrupt/empty
+## cloud snapshot can NEVER be mistaken for valid progress.
+func decode_envelope(text: String) -> Dictionary:
+	if text.strip_edges().is_empty():
+		return {}
+	var data: Variant = JSON.parse_string(text)
+	if typeof(data) != TYPE_DICTIONARY or not data.has("d"):
+		return {}
+	var decoded := AntiCheat.decode(str(data.get("d", "")))
+	if AntiCheat.checksum(decoded) != str(data.get("cs", "")):
+		return {}
+	var inner: Variant = JSON.parse_string(decoded)
+	return inner if typeof(inner) == TYPE_DICTIONARY else {}
+
+## Monotonic progress score of a cloud blob (total lifetime earnings). -1.0 if the
+## blob is invalid — used to decide cloud-vs-local without ever trusting garbage.
+func cloud_progress(text: String) -> float:
+	var inner := decode_envelope(text)
+	if inner.is_empty():
+		return -1.0
+	var g: Dictionary = inner.get("game", {})
+	return float(g.get("total_earned", 0.0))
+
+## Apply a validated cloud blob as the live game state (same path as load_game),
+## then persist it locally so the two agree. Returns false on an invalid blob.
+func apply_cloud(text: String) -> bool:
+	var inner := decode_envelope(text)
+	if inner.is_empty():
+		return false
+	var ok := _apply(inner)
+	if ok:
+		save_game()   # local now mirrors the cloud we just restored
+	return ok
